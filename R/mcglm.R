@@ -154,6 +154,11 @@ mcglm <- function(y, z_hat, x, family = "poisson",
     }
   }
 
+  # --- build xi_hat once ---
+  if (!is_multinomial) {
+    xi_hat <- build_xi_hat(z_hat, x, K)
+  }
+
   # --- fit ---
   results <- list()
   onestep_vcov   <- NULL
@@ -180,20 +185,20 @@ mcglm <- function(y, z_hat, x, family = "poisson",
 
   } else if (is_binary) {
     # ---- binary GLM path ----
-    naive <- fit_naive_bin(y, z_hat, x, family, wt = wt)
+    naive <- fit_naive_bin(y, xi_hat, family, wt = wt)
     psi   <- naive$coefficients
     results$naive <- psi
     p_total <- length(psi)
     naive_glm_fit <- naive$glm_fit
 
     if ("bca" %in% method)
-      results$bca <- fit_bca_bin(psi, y, z_hat, x, family, p01, p10, pi_z,
+      results$bca <- fit_bca_bin(psi, y, xi_hat, x, family, p01, p10, pi_z,
                                  iterate = iterate, wt = wt)
     if ("bcm" %in% method)
-      results$bcm <- fit_bcm_bin(psi, y, z_hat, x, family, p01, p10, pi_z,
+      results$bcm <- fit_bcm_bin(psi, y, xi_hat, x, family, p01, p10, pi_z,
                                  iterate = iterate, wt = wt)
     if ("cs"  %in% method)
-      results$cs  <- fit_cs_bin(psi, y, z_hat, x, family, p01, p10, pi_z,
+      results$cs  <- fit_cs_bin(psi, y, xi_hat, x, family, p01, p10, pi_z,
                                 wt = wt)
 
     if ("onestep" %in% method) {
@@ -208,21 +213,21 @@ mcglm <- function(y, z_hat, x, family = "poisson",
 
   } else {
     # ---- multicategory GLM path ----
-    naive <- fit_naive_multi(y, z_hat, x, K, family, wt = wt)
+    naive <- fit_naive_multi(y, xi_hat, family, wt = wt)
     psi   <- naive$coefficients
     results$naive <- psi
     p_total <- length(psi)
     naive_glm_fit <- naive$glm_fit
 
     if ("bca" %in% method)
-      results$bca <- fit_bca_multi(psi, y, z_hat, x, K, family, Pi, pi_z,
-                                   iterate = iterate, wt = wt)
+      results$bca <- fit_bca_multi(psi, y, xi_hat, z_hat, x, K, family,
+                                   Pi, pi_z, iterate = iterate, wt = wt)
     if ("bcm" %in% method)
-      results$bcm <- fit_bcm_multi(psi, y, z_hat, x, K, family, Pi, pi_z,
-                                   iterate = iterate, wt = wt)
+      results$bcm <- fit_bcm_multi(psi, y, xi_hat, z_hat, x, K, family,
+                                   Pi, pi_z, iterate = iterate, wt = wt)
     if ("cs"  %in% method)
-      results$cs  <- fit_cs_multi(psi, y, z_hat, x, K, family, Pi, pi_z,
-                                  wt = wt)
+      results$cs  <- fit_cs_multi(psi, y, xi_hat, z_hat, x, K, family,
+                                  Pi, pi_z, wt = wt)
 
     if ("onestep" %in% method) {
       os <- fit_onestep_multi(y, z_hat, x, K, family, Pi, pi_z,

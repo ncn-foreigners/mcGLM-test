@@ -2,6 +2,25 @@
 # Internal helper functions for computing drift, Fisher info, Jacobian
 # ---------------------------------------------------------------------------
 
+#' Build xi_hat design matrix (compute once, reuse everywhere)
+#'
+#' For binary Z: xi_hat = cbind(z_hat, x).
+#' For multicategory Z: xi_hat = cbind(d_hat, x) where d_hat is the
+#' dummy-encoding of z_hat with baseline = 0.
+#' @param z_hat Integer proxy covariate vector.
+#' @param x Covariate matrix (n x r).
+#' @param K Number of Z categories.
+#' @return n x p matrix.
+#' @keywords internal
+build_xi_hat <- function(z_hat, x, K) {
+  if (K == 2L) return(cbind(z_hat, x))
+  n <- length(z_hat)
+  s <- K - 1L
+  d_hat <- matrix(0, n, s)
+  for (k in seq_len(s)) d_hat[, k] <- as.numeric(z_hat == k)
+  cbind(d_hat, x)
+}
+
 # ---- Binary misclassification helpers ----
 
 #' Compute the toggle gap delta_i(psi) for binary misclassification
@@ -10,8 +29,8 @@
 compute_delta <- function(psi, x, mu_fun) {
   gamma <- psi[1]
   alpha <- psi[-1]
-  eta0 <- as.numeric(x %*% alpha)          # alpha'x_i
-  mu_fun(gamma + eta0) - mu_fun(eta0)      # n-vector
+  eta0 <- as.numeric(x %*% alpha)
+  mu_fun(gamma + eta0) - mu_fun(eta0)
 }
 
 #' Compute per-observation drift m_hat(psi) for binary misclassification
@@ -22,7 +41,7 @@ compute_delta <- function(psi, x, mu_fun) {
 compute_m_bin <- function(psi, x, mu_fun, p01, p10, pi_z) {
   n <- nrow(x)
   p <- length(psi)
-  delta <- compute_delta(psi, x, mu_fun)   # n-vector
+  delta <- compute_delta(psi, x, mu_fun)
   c1 <- p01 * (1 - pi_z)
   c2 <- p01 * (1 - pi_z) - p10 * pi_z
   m <- matrix(0, n, p)
@@ -39,35 +58,63 @@ compute_mhat_bin <- function(psi, x, mu_fun, p01, p10, pi_z, wt = NULL) {
   colSums(wt * m) / sum(wt)
 }
 
-#' Compute I_hat(psi) = weighted (1/N) sum wt_i * dot_mu(tilde_eta_i) * xi_hat * xi_hat'
+#' Compute I_hat(psi) from pre-built xi_hat
+#'
+#' I_hat = (1/N) sum wt_i * dot_mu(tilde_eta_i) * xi_hat_i * xi_hat_i'
+#' @param psi Parameter vector.
+#' @param xi_hat Pre-computed design matrix (n x p).
+#' @param mu_dot_fun Derivative of inverse link.
+#' @param wt Optional frequency weights.
 #' @keywords internal
-compute_Ihat <- function(psi, z_hat, x, mu_dot_fun, wt = NULL) {
-  xi_hat <- cbind(z_hat, x)
+compute_Ihat <- function(psi, xi_hat, mu_dot_fun, wt = NULL) {
+  n <- nrow(xi_hat)
   eta_tilde <- as.numeric(xi_hat %*% psi)
-  w <- mu_dot_fun(eta_tilde)               # n-vector of weights
+  w <- mu_dot_fun(eta_tilde)
   if (is.null(wt)) {
-    crossprod(xi_hat * w, xi_hat) / nrow(x)
+    crossprod(xi_hat * w, xi_hat) / n
   } else {
     crossprod(xi_hat * (wt * w), xi_hat) / sum(wt)
   }
 }
 
-#' Compute M_hat(psi) = d m_hat / d psi' for binary misclassification
+#' Analytical Jacobian M_hat for binary misclassification
 #'
-#' M_hat is the Jacobian of m_hat w.r.t. psi (p x p matrix).
-#' Uses numerical differentiation.
+#' Computes dm_hat/dpsi analytically in a single pass over the data,
+#' replacing the numerical differentiation that required p+1 passes.
 #' @keywords internal
-compute_Mhat_bin <- function(psi, x, mu_fun, p01, p10, pi_z, wt = NULL) {
-  p <- length(psi)
+compute_Mhat_bin <- function(psi, x, mu_fun, mu_dot_fun, p01, p10, pi_z,
+                             wt = NULL) {
+  gamma <- psi[1]
+  alpha <- psi[-1]
+  r <- length(alpha)
+  p <- 1L + r
+  n <- nrow(x)
+  N <- if (is.null(wt)) n else sum(wt)
+
+  eta0 <- as.numeric(x %*% alpha)
+  mu_dot1 <- mu_dot_fun(gamma + eta0)   # d mu / d eta at gamma + alpha'x
+  mu_dot0 <- mu_dot_fun(eta0)           # d mu / d eta at alpha'x
+  d_mu_dot <- mu_dot1 - mu_dot0         # difference
+
+  c1 <- p01 * (1 - pi_z)
+  c2 <- p01 * (1 - pi_z) - p10 * pi_z
+
   M <- matrix(0, p, p)
-  h <- 1e-7
-  m0 <- compute_mhat_bin(psi, x, mu_fun, p01, p10, pi_z, wt = wt)
-  for (j in seq_len(p)) {
-    psi_h <- psi
-    psi_h[j] <- psi_h[j] + h
-    m1 <- compute_mhat_bin(psi_h, x, mu_fun, p01, p10, pi_z, wt = wt)
-    M[, j] <- (m1 - m0) / h
+
+  if (is.null(wt)) {
+    # Row 1 (gamma component): d(-c1 * mean(delta)) / d psi
+    M[1, 1]    <- -c1 * mean(mu_dot1)
+    M[1, 2:p]  <- -c1 * colMeans(d_mu_dot * x)
+    # Rows 2:p (alpha component): d(-c2 * mean(delta * x_k)) / d psi
+    M[2:p, 1]    <- -c2 * colMeans(mu_dot1 * x)
+    M[2:p, 2:p]  <- -c2 * crossprod(d_mu_dot * x, x) / n
+  } else {
+    M[1, 1]    <- -c1 * sum(wt * mu_dot1) / N
+    M[1, 2:p]  <- -c1 * colSums(wt * d_mu_dot * x) / N
+    M[2:p, 1]    <- -c2 * colSums(wt * mu_dot1 * x) / N
+    M[2:p, 2:p]  <- -c2 * crossprod(x * (wt * d_mu_dot), x) / N
   }
+
   M
 }
 
@@ -75,49 +122,34 @@ compute_Mhat_bin <- function(psi, x, mu_fun, p01, p10, pi_z, wt = NULL) {
 # ---- Multicategory misclassification helpers ----
 
 #' Compute per-observation drift m_i(psi) for multicategory misclassification
-#'
-#' @param psi Parameter vector (gamma_1,...,gamma_(K-1), alpha).
-#' @param x  n x r covariate matrix.
-#' @param K  Number of categories (including baseline 0).
-#' @param mu_fun Inverse link function.
-#' @param Pi K x K misclassification matrix (columns = true, rows = proxy).
-#' @param pi_z K-vector of class prevalences.
-#' @return n x p matrix of per-observation drift contributions.
 #' @keywords internal
 compute_m_multi <- function(psi, x, K, mu_fun, Pi, pi_z) {
   n  <- nrow(x)
-  s  <- K - 1          # number of gamma parameters
+  s  <- K - 1
   r  <- ncol(x)
   p  <- s + r
 
-  gamma <- c(0, psi[seq_len(s)])           # gamma_0 = 0, gamma_1,...,gamma_{K-1}
+  gamma <- c(0, psi[seq_len(s)])
   alpha <- psi[(s + 1):p]
+  eta_base <- as.numeric(x %*% alpha)
 
-  eta_base <- as.numeric(x %*% alpha)      # n-vector: alpha'x_i
-
-  # mu_{i,ell} for each category ell = 0,...,K-1: n x K matrix
   mu_mat <- sapply(seq_len(K), function(ell) {
     mu_fun(eta_base + gamma[ell])
-  })  # n x K
+  })
 
   m <- matrix(0, n, p)
 
-  # gamma_k block (k = 1,...,K-1)
   for (k in seq_len(s)) {
     for (ell in seq_len(K)) {
-      # pi_z[ell] * Pi[k+1, ell] * (mu_{i,ell} - mu_{i,k})
-      # Note: k+1 because R is 1-indexed; proxy row k corresponds to category k
-      # but category indices in Pi are 1:K mapping to 0:(K-1)
       coeff <- pi_z[ell] * Pi[k + 1, ell]
       m[, k] <- m[, k] + coeff * (mu_mat[, ell] - mu_mat[, k + 1])
     }
   }
 
-  # alpha block
   for (ell in seq_len(K)) {
     for (j in seq_len(K)) {
       coeff <- pi_z[ell] * Pi[j, ell]
-      diff_mu <- mu_mat[, ell] - mu_mat[, j]  # n-vector
+      diff_mu <- mu_mat[, ell] - mu_mat[, j]
       m[, (s + 1):p] <- m[, (s + 1):p] + coeff * diff_mu * x
     }
   }
@@ -132,27 +164,17 @@ compute_mhat_multi <- function(psi, x, K, mu_fun, Pi, pi_z, wt = NULL) {
   colSums(wt * m) / sum(wt)
 }
 
-#' Compute I_hat(psi) for multicategory case
-#'
-#' I_hat = weighted (1/N) sum wt_i * dot_mu(eta_i) * xi_hat * xi_hat'
+#' Compute I_hat(psi) for multicategory case using pre-built xi_hat
 #' @keywords internal
-compute_Ihat_multi <- function(psi, z_hat, x, K, mu_dot_fun, wt = NULL) {
-  n <- nrow(x)
+compute_Ihat_multi <- function(psi, xi_hat, z_hat, K, mu_dot_fun, wt = NULL) {
+  n <- nrow(xi_hat)
   s <- K - 1
-  r <- ncol(x)
+  r <- ncol(xi_hat) - s
   gamma <- c(0, psi[seq_len(s)])
   alpha <- psi[(s + 1):(s + r)]
-  eta_base <- as.numeric(x %*% alpha)
+  eta_base <- as.numeric(xi_hat[, (s + 1):(s + r), drop = FALSE] %*% alpha)
 
-  # dummy encoding of z_hat
-  d_hat <- matrix(0, n, s)
-  for (k in seq_len(s)) {
-    d_hat[, k] <- as.numeric(z_hat == k)
-  }
-  xi_hat <- cbind(d_hat, x)
-
-  # linear predictor for each observation using its proxy category
-  eta_tilde <- eta_base + gamma[z_hat + 1]  # +1 for R indexing
+  eta_tilde <- eta_base + gamma[z_hat + 1]
   w <- mu_dot_fun(eta_tilde)
   if (is.null(wt)) {
     crossprod(xi_hat * w, xi_hat) / n
