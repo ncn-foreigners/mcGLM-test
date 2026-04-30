@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# One-step joint estimation via TMB mixture likelihood
+# One-step joint estimation via TMB/RTMB mixture likelihood
 # ---------------------------------------------------------------------------
 
 #' Compute mixture weights from known misclassification rates (binary)
@@ -30,12 +30,18 @@ compute_omega_multi <- function(Pi, pi_z, K) {
   omega
 }
 
+
+# ======================== GLM ONE-STEP ====================================
+
 #' One-step joint estimator for binary misclassification (GLM)
+#' @param engine Character: \code{"tmb"} (C++ via TMB) or \code{"rtmb"}
+#'   (pure R via RTMB). Default is \code{"tmb"}.
 #' @keywords internal
 fit_onestep_bin <- function(y, z_hat, x, family,
                             p01 = NULL, p10 = NULL, pi_z = NULL,
                             weights = "fixed", homoskedastic = TRUE,
-                            optim_control = list(), wt = NULL) {
+                            optim_control = list(), wt = NULL,
+                            engine = "tmb") {
   fam <- get_link_funs(family)
   n   <- length(y)
   r   <- ncol(x)
@@ -58,6 +64,7 @@ fit_onestep_bin <- function(y, z_hat, x, family,
 
   if (is.null(wt)) wt_data <- rep(1.0, n) else wt_data <- as.numeric(wt)
 
+  # Starting values from naive GLM
   xi_hat <- cbind(z_hat, x)
   naive_fit <- stats::glm(y ~ . - 1,
     data = data.frame(y = y, xi_hat),
@@ -76,22 +83,14 @@ fit_onestep_bin <- function(y, z_hat, x, family,
     }
   }
 
-  data_list <- list(
-    model_type    = 0L,
-    X             = x,
-    z_hat         = as.integer(z_hat),
-    weights_fixed = weights_fixed,
-    omega_data    = omega_data,
-    K             = K,
-    wt            = wt_data,
-    Y             = y,
-    dist_code     = dist_code,
+  obj <- make_ad_obj(
+    engine = engine,
+    theta_init = theta_init,
+    model_type = "glm",
+    Y = y, X = x, z_hat = as.integer(z_hat), K = K,
+    dist_code = dist_code, omega_data = omega_data,
+    wt = wt_data, weights_fixed = weights_fixed,
     homoskedastic = as.integer(homoskedastic)
-  )
-
-  obj <- TMB::MakeADFun(
-    data = data_list, parameters = list(theta = theta_init),
-    DLL = "mcGLM", silent = TRUE
   )
 
   opt <- run_nlminb(obj, optim_control)
@@ -112,7 +111,8 @@ fit_onestep_bin <- function(y, z_hat, x, family,
 fit_onestep_multi <- function(y, z_hat, x, K, family,
                               Pi = NULL, pi_z = NULL,
                               weights = "fixed", homoskedastic = TRUE,
-                              optim_control = list(), wt = NULL) {
+                              optim_control = list(), wt = NULL,
+                              engine = "tmb") {
   fam <- get_link_funs(family)
   n   <- length(y)
   r   <- ncol(x)
@@ -154,22 +154,14 @@ fit_onestep_multi <- function(y, z_hat, x, K, family,
     }
   }
 
-  data_list <- list(
-    model_type    = 0L,
-    X             = x,
-    z_hat         = as.integer(z_hat),
-    weights_fixed = weights_fixed,
-    omega_data    = omega_data,
-    K             = K,
-    wt            = wt_data,
-    Y             = y,
-    dist_code     = dist_code,
+  obj <- make_ad_obj(
+    engine = engine,
+    theta_init = theta_init,
+    model_type = "glm",
+    Y = y, X = x, z_hat = as.integer(z_hat), K = K,
+    dist_code = dist_code, omega_data = omega_data,
+    wt = wt_data, weights_fixed = weights_fixed,
     homoskedastic = as.integer(homoskedastic)
-  )
-
-  obj <- TMB::MakeADFun(
-    data = data_list, parameters = list(theta = theta_init),
-    DLL = "mcGLM", silent = TRUE
   )
 
   opt <- run_nlminb(obj, optim_control)
@@ -192,35 +184,19 @@ fit_onestep_multi <- function(y, z_hat, x, K, family,
 #' Maximizes the integrated multinomial likelihood that marginalizes over the
 #' latent true label Z via a mixture.
 #'
-#' The model is:
-#' \deqn{P(Y=j | Z=l, x) = \exp(\eta_{j,l}) / \sum_{j'} \exp(\eta_{j',l})}
-#' where \eqn{\eta_{j,l} = \gamma_{j,l} + \alpha_j' x} with \eqn{\gamma_{j,0}=0}
-#' (baseline Z) and \eqn{\eta_{0,l}=0} (baseline Y).
-#'
-#' @param y Integer vector of categorical responses in \{0, ..., J-1\}.
-#' @param z_hat Integer vector of observed proxy covariate in \{0, ..., K-1\}.
-#' @param x Numeric matrix of correctly observed covariates (n x r), including
-#'   intercept if desired.
-#' @param J Number of response categories.
-#' @param K Number of categories for the misclassified covariate.
-#' @param p01,p10,pi_z Binary misclassification parameters (for K=2).
-#' @param Pi K x K misclassification matrix (for K >= 2).
-#' @param pi_z Prevalence vector (length K).
-#' @param weights Character: \code{"fixed"} or \code{"estimated"}.
-#' @param optim_control List of control parameters for \code{nlminb}.
-#' @param wt Optional frequency weights (length n).
-#' @return List with coefficients, vcov, loglik, convergence.
+#' @param engine Character: \code{"tmb"} or \code{"rtmb"}.
 #' @keywords internal
 fit_onestep_multinomial <- function(y, z_hat, x, J, K,
                                     p01 = NULL, p10 = NULL, pi_z = NULL,
                                     Pi = NULL,
                                     weights = "fixed",
-                                    optim_control = list(), wt = NULL) {
+                                    optim_control = list(), wt = NULL,
+                                    engine = "tmb") {
   n <- length(y)
   r <- ncol(x)
   s <- K - 1
   block_size <- s + r
-  d <- (J - 1) * block_size   # total regression parameters
+  d <- (J - 1) * block_size
 
   is_binary_z <- (K == 2L)
 
@@ -239,11 +215,8 @@ fit_onestep_multinomial <- function(y, z_hat, x, J, K,
 
   if (is.null(wt)) wt_data <- rep(1.0, n) else wt_data <- as.numeric(wt)
 
-  # --- Starting values ---
-  # Fit naive multinomial via category-specific binomial regressions
+  # Starting values via category-specific binomial regressions
   theta_init <- numeric(d)
-
-  # Dummy-encode z_hat (baseline = 0)
   d_hat <- matrix(0, n, s)
   for (k in seq_len(s)) d_hat[, k] <- as.numeric(z_hat == k)
   xi_naive <- cbind(d_hat, x)
@@ -257,30 +230,19 @@ fit_onestep_multinomial <- function(y, z_hat, x, J, K,
       )
       theta_init[((jj - 1) * block_size + 1):(jj * block_size)] <-
         unname(stats::coef(fit_j))
-    }, error = function(e) {
-      # leave as zeros
-    })
+    }, error = function(e) NULL)
   }
 
-  if (!weights_fixed) {
-    theta_init <- c(theta_init, rep(0, K * K - 1))
-  }
+  if (!weights_fixed) theta_init <- c(theta_init, rep(0, K * K - 1))
 
-  data_list <- list(
-    model_type    = 1L,
-    X             = x,
-    z_hat         = as.integer(z_hat),
-    weights_fixed = weights_fixed,
-    omega_data    = omega_data,
-    K             = K,
-    wt            = wt_data,
-    Y_int         = as.integer(y),
-    J             = as.integer(J)
-  )
-
-  obj <- TMB::MakeADFun(
-    data = data_list, parameters = list(theta = theta_init),
-    DLL = "mcGLM", silent = TRUE
+  obj <- make_ad_obj(
+    engine = engine,
+    theta_init = theta_init,
+    model_type = "multinomial",
+    Y_int = as.integer(y), X = x, z_hat = as.integer(z_hat),
+    J = as.integer(J), K = K,
+    omega_data = omega_data, wt = wt_data,
+    weights_fixed = weights_fixed
   )
 
   opt <- run_nlminb(obj, optim_control)
@@ -288,19 +250,7 @@ fit_onestep_multinomial <- function(y, z_hat, x, J, K,
   b_hat <- opt$par[1:d]
   V     <- vcov_onestep(obj, opt, d)
 
-  # Parameter names: for each response category j=1,...,J-1
-  nms <- character(d)
-  for (jj in seq_len(J - 1)) {
-    offset <- (jj - 1) * block_size
-    if (s > 0) {
-      if (s == 1) {
-        nms[offset + 1] <- paste0("y", jj, ":gamma")
-      } else {
-        nms[offset + seq_len(s)] <- paste0("y", jj, ":gamma", seq_len(s))
-      }
-    }
-    nms[offset + s + seq_len(r)] <- paste0("y", jj, ":alpha", seq_len(r) - 1)
-  }
+  nms <- make_multinomial_names(J, K, ncol(x))
   names(b_hat) <- nms
   colnames(V) <- rownames(V) <- nms
 
@@ -310,18 +260,6 @@ fit_onestep_multinomial <- function(y, z_hat, x, J, K,
 
 
 #' Fit naive multinomial logistic regression with proxy covariate
-#'
-#' Fits a standard multinomial logistic model treating the proxy z_hat as
-#' the true covariate, using nnet::multinom if available, otherwise
-#' category-specific binomial GLMs.
-#'
-#' @param y Integer response vector in \{0,...,J-1\}.
-#' @param z_hat Integer proxy covariate vector.
-#' @param x Covariate matrix (n x r).
-#' @param J Number of response categories.
-#' @param K Number of Z categories.
-#' @param wt Optional frequency weights.
-#' @return List with coefficients vector (ordered by response category blocks).
 #' @keywords internal
 fit_naive_multinomial <- function(y, z_hat, x, J, K, wt = NULL) {
   n <- length(y)
@@ -336,18 +274,15 @@ fit_naive_multinomial <- function(y, z_hat, x, J, K, wt = NULL) {
 
   if (is.null(wt)) wt_data <- rep(1, n) else wt_data <- wt
 
-  # Try nnet::multinom first
   if (requireNamespace("nnet", quietly = TRUE)) {
     dat <- data.frame(y = factor(y, levels = 0:(J - 1)), xi)
     fit <- nnet::multinom(y ~ . - 1, data = dat, weights = wt_data, trace = FALSE)
-    # nnet returns a (J-1) x p matrix of coefficients
     coef_mat <- stats::coef(fit)
     if (!is.matrix(coef_mat)) coef_mat <- matrix(coef_mat, nrow = 1)
-    psi <- as.numeric(t(coef_mat))  # stack by row = by response category
+    psi <- as.numeric(t(coef_mat))
     return(list(coefficients = psi, multinom_fit = fit))
   }
 
-  # Fallback: category-specific binomial GLMs
   psi <- numeric(d)
   for (jj in seq_len(J - 1)) {
     y_bin <- as.numeric(y == jj)
@@ -365,6 +300,102 @@ fit_naive_multinomial <- function(y, z_hat, x, J, K, wt = NULL) {
 
 
 # ======================== SHARED UTILITIES ================================
+
+#' Create AD objective via TMB (C++) or RTMB (pure R)
+#'
+#' @param engine \code{"tmb"} or \code{"rtmb"}.
+#' @param theta_init Initial parameter vector.
+#' @param model_type \code{"glm"} or \code{"multinomial"}.
+#' @param ... Model-specific data arguments.
+#' @return AD function object (from TMB or RTMB MakeADFun).
+#' @keywords internal
+make_ad_obj <- function(engine, theta_init, model_type, ...) {
+  args <- list(...)
+
+  if (engine == "rtmb") {
+    if (!requireNamespace("RTMB", quietly = TRUE))
+      stop("Package 'RTMB' required for engine='rtmb'. ",
+           "Install with: install.packages('RTMB')")
+
+    if (model_type == "glm") {
+      nll_fn <- make_nll_glm(
+        Y = args$Y, X = args$X, z_hat = args$z_hat, K = args$K,
+        dist_code = args$dist_code, omega_data = args$omega_data,
+        wt = args$wt, weights_fixed = args$weights_fixed,
+        homoskedastic = args$homoskedastic
+      )
+    } else {
+      nll_fn <- make_nll_multinomial(
+        Y_int = args$Y_int, X = args$X, z_hat = args$z_hat,
+        J = args$J, K = args$K, omega_data = args$omega_data,
+        wt = args$wt, weights_fixed = args$weights_fixed
+      )
+    }
+
+    RTMB::MakeADFun(
+      func = nll_fn,
+      parameters = list(theta = theta_init),
+      silent = TRUE
+    )
+
+  } else {
+    # TMB (C++)
+    if (model_type == "glm") {
+      data_list <- list(
+        model_type    = 0L,
+        X             = args$X,
+        z_hat         = args$z_hat,
+        weights_fixed = args$weights_fixed,
+        omega_data    = args$omega_data,
+        K             = args$K,
+        wt            = args$wt,
+        Y             = args$Y,
+        dist_code     = args$dist_code,
+        homoskedastic = args$homoskedastic
+      )
+    } else {
+      data_list <- list(
+        model_type    = 1L,
+        X             = args$X,
+        z_hat         = args$z_hat,
+        weights_fixed = args$weights_fixed,
+        omega_data    = args$omega_data,
+        K             = args$K,
+        wt            = args$wt,
+        Y_int         = args$Y_int,
+        J             = args$J
+      )
+    }
+
+    TMB::MakeADFun(
+      data = data_list,
+      parameters = list(theta = theta_init),
+      DLL = "mcGLM",
+      silent = TRUE
+    )
+  }
+}
+
+
+#' Generate parameter names for multinomial model
+#' @keywords internal
+make_multinomial_names <- function(J, K, r) {
+  s <- K - 1
+  block_size <- s + r
+  d <- (J - 1) * block_size
+  nms <- character(d)
+  for (jj in seq_len(J - 1)) {
+    offset <- (jj - 1) * block_size
+    if (s == 1) {
+      nms[offset + 1] <- paste0("y", jj, ":gamma")
+    } else if (s > 1) {
+      nms[offset + seq_len(s)] <- paste0("y", jj, ":gamma", seq_len(s))
+    }
+    nms[offset + s + seq_len(r)] <- paste0("y", jj, ":alpha", seq_len(r) - 1)
+  }
+  nms
+}
+
 
 #' Run nlminb with BFGS fallback
 #' @keywords internal
@@ -393,13 +424,7 @@ run_nlminb <- function(obj, optim_control = list()) {
 }
 
 
-#' Compute variance-covariance matrix from TMB Hessian
-#'
-#' Uses the inverse Hessian at the optimum, with fallbacks.
-#' @param obj TMB objective (from MakeADFun).
-#' @param opt Optimization result (from nlminb/optim).
-#' @param d Number of regression coefficients to extract.
-#' @return d x d variance-covariance matrix.
+#' Compute variance-covariance matrix from Hessian
 #' @keywords internal
 vcov_onestep <- function(obj, opt, d) {
   H <- tryCatch({

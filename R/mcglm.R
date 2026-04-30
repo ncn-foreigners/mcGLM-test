@@ -44,6 +44,9 @@
 #' @param J Number of response categories for the multinomial model. If
 #'   \code{NULL} (default), automatically determined from \code{y} when
 #'   \code{family = "multinomial"}.
+#' @param engine Autodiff engine for the one-step estimator: \code{"tmb"}
+#'   (default, C++ via TMB) or \code{"rtmb"} (pure R via RTMB). RTMB avoids
+#'   C++ compilation and is easier to extend; TMB is faster for large datasets.
 #' @param homoskedastic Logical. For Gaussian one-step estimation, whether to
 #'   assume a common error variance. Default is \code{TRUE}.
 #' @param optim_control List of control parameters passed to \code{nlminb}
@@ -87,6 +90,7 @@ mcglm <- function(y, z_hat, x, family = "poisson",
                   weights = "fixed",
                   freq_weights = NULL,
                   J = NULL,
+                  engine = c("tmb", "rtmb"),
                   homoskedastic = TRUE,
                   optim_control = list()) {
 
@@ -99,6 +103,7 @@ mcglm <- function(y, z_hat, x, family = "poisson",
                       several.ok = TRUE)
 
   stopifnot(nrow(x) == n, length(z_hat) == n)
+  engine <- match.arg(engine)
 
   # --- validate frequency weights ---
   wt <- NULL
@@ -166,7 +171,8 @@ mcglm <- function(y, z_hat, x, family = "poisson",
       os <- fit_onestep_multinomial(y, z_hat, x, J, K,
                                     p01 = p01, p10 = p10, pi_z = pi_z,
                                     Pi = Pi, weights = weights,
-                                    optim_control = optim_control, wt = wt)
+                                    optim_control = optim_control, wt = wt,
+                                    engine = engine)
       results$onestep <- os$coefficients
       onestep_vcov    <- os$vcov
       onestep_loglik  <- os$loglik
@@ -193,7 +199,8 @@ mcglm <- function(y, z_hat, x, family = "poisson",
     if ("onestep" %in% method) {
       os <- fit_onestep_bin(y, z_hat, x, family, p01, p10, pi_z,
                             weights = weights, homoskedastic = homoskedastic,
-                            optim_control = optim_control, wt = wt)
+                            optim_control = optim_control, wt = wt,
+                            engine = engine)
       results$onestep <- os$coefficients
       onestep_vcov    <- os$vcov
       onestep_loglik  <- os$loglik
@@ -220,7 +227,8 @@ mcglm <- function(y, z_hat, x, family = "poisson",
     if ("onestep" %in% method) {
       os <- fit_onestep_multi(y, z_hat, x, K, family, Pi, pi_z,
                               weights = weights, homoskedastic = homoskedastic,
-                              optim_control = optim_control, wt = wt)
+                              optim_control = optim_control, wt = wt,
+                              engine = engine)
       results$onestep <- os$coefficients
       onestep_vcov    <- os$vcov
       onestep_loglik  <- os$loglik
