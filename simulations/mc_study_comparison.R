@@ -504,13 +504,59 @@ make_Pi <- function(K, p_miscl) {
 
 
 # ==========================================================================
+# Flatten one replication result into a data.frame row per method
+# ==========================================================================
+
+#' Convert one replication's result list into a long data.frame
+#' @param res Single replication result (named list from run_one_comparison_*)
+#' @param scenario Scenario name string
+#' @param rep_id Replication number
+#' @param param_names Parameter name vector
+#' @param psi0 True parameter values
+flatten_one_result <- function(res, scenario, rep_id, param_names, psi0) {
+  methods <- c("oracle", "naive", "bca", "bcm", "bcm_iter", "cs",
+               "mcsimex", "onestep", "rc")
+  method_labels <- c("Oracle", "Naive", "BCA", "BCM", "BCM-iter", "CS",
+                     "MC-SIMEX", "Onestep", "RC")
+  p <- length(psi0)
+  rows <- vector("list", length(methods) * p)
+  idx <- 0L
+
+  for (m_idx in seq_along(methods)) {
+    meth <- methods[m_idx]
+    lab  <- method_labels[m_idx]
+    est  <- res[[meth]]
+    se   <- res[[paste0("se_", meth)]]
+    tt   <- res[[paste0("t_", meth)]]
+
+    for (j in seq_len(p)) {
+      idx <- idx + 1L
+      rows[[idx]] <- data.frame(
+        scenario  = scenario,
+        rep       = rep_id,
+        method    = lab,
+        parameter = param_names[j],
+        true      = psi0[j],
+        estimate  = if (is.null(est) || length(est) < j) NA_real_ else est[j],
+        se        = if (is.null(se)  || length(se)  < j) NA_real_ else se[j],
+        time      = if (is.null(tt)) NA_real_ else tt,
+        stringsAsFactors = FALSE
+      )
+    }
+  }
+
+  do.call(rbind, rows)
+}
+
+
+# ==========================================================================
 # Main simulation loop
 # ==========================================================================
 
 B <- 500
 #B <- 10  # uncomment for quick testing
 set.seed(2026)
-all_tables <- list()
+all_raw <- list()
 
 run_scenario <- function(run_fn, B, ncores, ...) {
   dots <- list(...)
@@ -545,10 +591,16 @@ for (sc_name in names(scenarios_bin)) {
   t1 <- proc.time()
   cat(sprintf("  Elapsed: %.1f sec\n", (t1 - t0)[3]))
 
-  tab <- summarize_comparison(results, psi0_bin, names_bin)
-  tab <- cbind(Scenario = sc_name, tab)
-  all_tables[[sc_name]] <- tab
-  print(tab[tab$Parameter == "gamma(0.8)", ], row.names = FALSE)
+  # Flatten all replications into rows
+  sc_rows <- lapply(seq_along(results), function(b) {
+    flatten_one_result(results[[b]], sc_name, b, names_bin, psi0_bin)
+  })
+  all_raw[[sc_name]] <- do.call(rbind, sc_rows)
+
+  # Print quick summary for gamma
+  est_gamma <- sapply(results, function(r) r$cs[1])
+  cat(sprintf("  CS gamma: mean=%.3f, sd=%.4f (true=%.1f)\n",
+              mean(est_gamma, na.rm = TRUE), sd(est_gamma, na.rm = TRUE), psi0_bin[1]))
 }
 
 # ---- Multicategory scenarios ----
@@ -568,13 +620,17 @@ for (sc_name in names(scenarios_multi)) {
   t1 <- proc.time()
   cat(sprintf("  Elapsed: %.1f sec\n", (t1 - t0)[3]))
 
-  tab <- summarize_comparison(results, psi0_multi, names_multi)
-  tab <- cbind(Scenario = sc_name, tab)
-  all_tables[[sc_name]] <- tab
-  print(tab[tab$Parameter == "gamma1(1.0)", ], row.names = FALSE)
+  sc_rows <- lapply(seq_along(results), function(b) {
+    flatten_one_result(results[[b]], sc_name, b, names_multi, psi0_multi)
+  })
+  all_raw[[sc_name]] <- do.call(rbind, sc_rows)
+
+  est_gamma1 <- sapply(results, function(r) r$cs[1])
+  cat(sprintf("  CS gamma1: mean=%.3f, sd=%.4f (true=%.1f)\n",
+              mean(est_gamma1, na.rm = TRUE), sd(est_gamma1, na.rm = TRUE), psi0_multi[1]))
 }
 
-# ---- Save ----
-all_results <- do.call(rbind, all_tables)
-write.csv(all_results, file = "mc_comparison_results.csv", row.names = FALSE)
-cat("\nAll results saved to mc_comparison_results.csv\n")
+# ---- Save raw results ----
+all_results <- do.call(rbind, all_raw)
+write.csv(all_results, file = "mc_comparison_raw.csv", row.names = FALSE)
+cat(sprintf("\nRaw results saved to mc_comparison_raw.csv (%d rows)\n", nrow(all_results)))
