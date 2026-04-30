@@ -31,19 +31,25 @@ compute_m_bin <- function(psi, x, mu_fun, p01, p10, pi_z) {
   m
 }
 
-#' Compute m_hat(psi) = colMeans(m_i)
+#' Compute m_hat(psi) = weighted mean of m_i
 #' @keywords internal
-compute_mhat_bin <- function(psi, x, mu_fun, p01, p10, pi_z) {
-  colMeans(compute_m_bin(psi, x, mu_fun, p01, p10, pi_z))
+compute_mhat_bin <- function(psi, x, mu_fun, p01, p10, pi_z, wt = NULL) {
+  m <- compute_m_bin(psi, x, mu_fun, p01, p10, pi_z)
+  if (is.null(wt)) return(colMeans(m))
+  colSums(wt * m) / sum(wt)
 }
 
-#' Compute I_hat(psi) = (1/n) sum dot_mu(tilde_eta_i) * xi_hat * xi_hat'
+#' Compute I_hat(psi) = weighted (1/N) sum wt_i * dot_mu(tilde_eta_i) * xi_hat * xi_hat'
 #' @keywords internal
-compute_Ihat <- function(psi, z_hat, x, mu_dot_fun) {
+compute_Ihat <- function(psi, z_hat, x, mu_dot_fun, wt = NULL) {
   xi_hat <- cbind(z_hat, x)
   eta_tilde <- as.numeric(xi_hat %*% psi)
   w <- mu_dot_fun(eta_tilde)               # n-vector of weights
-  crossprod(xi_hat * w, xi_hat) / nrow(x)
+  if (is.null(wt)) {
+    crossprod(xi_hat * w, xi_hat) / nrow(x)
+  } else {
+    crossprod(xi_hat * (wt * w), xi_hat) / sum(wt)
+  }
 }
 
 #' Compute M_hat(psi) = d m_hat / d psi' for binary misclassification
@@ -51,15 +57,15 @@ compute_Ihat <- function(psi, z_hat, x, mu_dot_fun) {
 #' M_hat is the Jacobian of m_hat w.r.t. psi (p x p matrix).
 #' Uses numerical differentiation.
 #' @keywords internal
-compute_Mhat_bin <- function(psi, x, mu_fun, p01, p10, pi_z) {
+compute_Mhat_bin <- function(psi, x, mu_fun, p01, p10, pi_z, wt = NULL) {
   p <- length(psi)
   M <- matrix(0, p, p)
   h <- 1e-7
-  m0 <- compute_mhat_bin(psi, x, mu_fun, p01, p10, pi_z)
+  m0 <- compute_mhat_bin(psi, x, mu_fun, p01, p10, pi_z, wt = wt)
   for (j in seq_len(p)) {
     psi_h <- psi
     psi_h[j] <- psi_h[j] + h
-    m1 <- compute_mhat_bin(psi_h, x, mu_fun, p01, p10, pi_z)
+    m1 <- compute_mhat_bin(psi_h, x, mu_fun, p01, p10, pi_z, wt = wt)
     M[, j] <- (m1 - m0) / h
   }
   M
@@ -120,15 +126,17 @@ compute_m_multi <- function(psi, x, K, mu_fun, Pi, pi_z) {
 }
 
 #' @keywords internal
-compute_mhat_multi <- function(psi, x, K, mu_fun, Pi, pi_z) {
-  colMeans(compute_m_multi(psi, x, K, mu_fun, Pi, pi_z))
+compute_mhat_multi <- function(psi, x, K, mu_fun, Pi, pi_z, wt = NULL) {
+  m <- compute_m_multi(psi, x, K, mu_fun, Pi, pi_z)
+  if (is.null(wt)) return(colMeans(m))
+  colSums(wt * m) / sum(wt)
 }
 
 #' Compute I_hat(psi) for multicategory case
 #'
-#' I_hat = (1/n) sum dot_mu(eta_i) * xi_hat * xi_hat'
+#' I_hat = weighted (1/N) sum wt_i * dot_mu(eta_i) * xi_hat * xi_hat'
 #' @keywords internal
-compute_Ihat_multi <- function(psi, z_hat, x, K, mu_dot_fun) {
+compute_Ihat_multi <- function(psi, z_hat, x, K, mu_dot_fun, wt = NULL) {
   n <- nrow(x)
   s <- K - 1
   r <- ncol(x)
@@ -146,20 +154,24 @@ compute_Ihat_multi <- function(psi, z_hat, x, K, mu_dot_fun) {
   # linear predictor for each observation using its proxy category
   eta_tilde <- eta_base + gamma[z_hat + 1]  # +1 for R indexing
   w <- mu_dot_fun(eta_tilde)
-  crossprod(xi_hat * w, xi_hat) / n
+  if (is.null(wt)) {
+    crossprod(xi_hat * w, xi_hat) / n
+  } else {
+    crossprod(xi_hat * (wt * w), xi_hat) / sum(wt)
+  }
 }
 
 #' Numerical Jacobian M_hat for multicategory drift
 #' @keywords internal
-compute_Mhat_multi <- function(psi, x, K, mu_fun, Pi, pi_z) {
+compute_Mhat_multi <- function(psi, x, K, mu_fun, Pi, pi_z, wt = NULL) {
   p <- length(psi)
   M <- matrix(0, p, p)
   h <- 1e-7
-  m0 <- compute_mhat_multi(psi, x, K, mu_fun, Pi, pi_z)
+  m0 <- compute_mhat_multi(psi, x, K, mu_fun, Pi, pi_z, wt = wt)
   for (j in seq_len(p)) {
     psi_h <- psi
     psi_h[j] <- psi_h[j] + h
-    m1 <- compute_mhat_multi(psi_h, x, K, mu_fun, Pi, pi_z)
+    m1 <- compute_mhat_multi(psi_h, x, K, mu_fun, Pi, pi_z, wt = wt)
     M[, j] <- (m1 - m0) / h
   }
   M

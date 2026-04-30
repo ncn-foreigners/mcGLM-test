@@ -6,11 +6,15 @@
 
 #' Fit the naive GLM estimator (binary misclassification)
 #' @keywords internal
-fit_naive_bin <- function(y, z_hat, x, family) {
+fit_naive_bin <- function(y, z_hat, x, family, wt = NULL) {
   fam <- get_link_funs(family)
   xi_hat <- cbind(z_hat, x)
   dat <- data.frame(y = y, xi_hat)
-  fit <- stats::glm(y ~ . - 1, data = dat, family = fam$family)
+  if (is.null(wt)) {
+    fit <- stats::glm(y ~ . - 1, data = dat, family = fam$family)
+  } else {
+    fit <- stats::glm(y ~ . - 1, data = dat, family = fam$family, weights = wt)
+  }
   list(
     coefficients = unname(stats::coef(fit)),
     fitted       = stats::fitted(fit),
@@ -28,17 +32,18 @@ fit_naive_bin <- function(y, z_hat, x, family) {
 #' m_hat. This removes higher-order bias from evaluating m at the wrong point.
 #' @keywords internal
 fit_bca_bin <- function(psi_naive, y, z_hat, x, family, p01, p10, pi_z,
-                        iterate = FALSE, max_iter = 50, tol = 1e-8) {
+                        iterate = FALSE, max_iter = 50, tol = 1e-8,
+                        wt = NULL) {
   fam <- get_link_funs(family)
   # I_hat fixed at the naive estimate (well-conditioned)
-  I_hat_inv <- solve(compute_Ihat(psi_naive, z_hat, x, fam$mu_dot))
+  I_hat_inv <- solve(compute_Ihat(psi_naive, z_hat, x, fam$mu_dot, wt = wt))
 
-  m_hat <- compute_mhat_bin(psi_naive, x, fam$mu, p01, p10, pi_z)
+  m_hat <- compute_mhat_bin(psi_naive, x, fam$mu, p01, p10, pi_z, wt = wt)
   psi   <- psi_naive - I_hat_inv %*% m_hat
   if (!iterate) return(as.numeric(psi))
 
   for (iter in seq_len(max_iter)) {
-    m_hat   <- compute_mhat_bin(psi, x, fam$mu, p01, p10, pi_z)
+    m_hat   <- compute_mhat_bin(psi, x, fam$mu, p01, p10, pi_z, wt = wt)
     psi_new <- psi_naive - I_hat_inv %*% m_hat
     if (max(abs(psi_new - psi)) < tol) break
     psi <- as.numeric(psi_new)
@@ -56,21 +61,27 @@ fit_bca_bin <- function(psi_naive, y, z_hat, x, family, p01, p10, pi_z,
 #' yields the corrected-score (CS) estimator.
 #' @keywords internal
 fit_bcm_bin <- function(psi_naive, y, z_hat, x, family, p01, p10, pi_z,
-                        iterate = FALSE, max_iter = 50, tol = 1e-8) {
+                        iterate = FALSE, max_iter = 50, tol = 1e-8,
+                        wt = NULL) {
   fam <- get_link_funs(family)
   xi_hat <- cbind(z_hat, x)
   n <- length(y)
+  N <- if (is.null(wt)) n else sum(wt)
 
   psi <- psi_naive
   for (iter in seq_len(if (iterate) max_iter else 1L)) {
     eta_tilde <- as.numeric(xi_hat %*% psi)
     resid <- y - fam$mu(eta_tilde)
-    U_hat <- colMeans(xi_hat * resid)
-    m_hat <- compute_mhat_bin(psi, x, fam$mu, p01, p10, pi_z)
+    if (is.null(wt)) {
+      U_hat <- colMeans(xi_hat * resid)
+    } else {
+      U_hat <- colSums(wt * xi_hat * resid) / N
+    }
+    m_hat <- compute_mhat_bin(psi, x, fam$mu, p01, p10, pi_z, wt = wt)
     Phi   <- U_hat - m_hat
 
-    I_hat <- compute_Ihat(psi, z_hat, x, fam$mu_dot)
-    M_hat <- compute_Mhat_bin(psi, x, fam$mu, p01, p10, pi_z)
+    I_hat <- compute_Ihat(psi, z_hat, x, fam$mu_dot, wt = wt)
+    M_hat <- compute_Mhat_bin(psi, x, fam$mu, p01, p10, pi_z, wt = wt)
     step  <- solve(I_hat + M_hat, Phi)
 
     psi_new <- psi + step
@@ -85,24 +96,30 @@ fit_bcm_bin <- function(psi_naive, y, z_hat, x, family, p01, p10, pi_z,
 #' Solves (1/n) sum phi_i(psi) = 0, where
 #' phi_i = xi_hat_i * (Y_i - mu(tilde_eta_i)) - m_i(psi)
 #' @keywords internal
-fit_cs_bin <- function(psi_init, y, z_hat, x, family, p01, p10, pi_z) {
+fit_cs_bin <- function(psi_init, y, z_hat, x, family, p01, p10, pi_z,
+                       wt = NULL) {
   fam <- get_link_funs(family)
   n   <- length(y)
+  N   <- if (is.null(wt)) n else sum(wt)
   xi_hat <- cbind(z_hat, x)
 
   # corrected score function: returns p-vector that should be zero
   phi_mean <- function(psi) {
     eta_tilde <- as.numeric(xi_hat %*% psi)
     resid     <- y - fam$mu(eta_tilde)
-    score     <- colMeans(xi_hat * resid)
-    m_hat     <- compute_mhat_bin(psi, x, fam$mu, p01, p10, pi_z)
+    if (is.null(wt)) {
+      score <- colMeans(xi_hat * resid)
+    } else {
+      score <- colSums(wt * xi_hat * resid) / N
+    }
+    m_hat     <- compute_mhat_bin(psi, x, fam$mu, p01, p10, pi_z, wt = wt)
     score - m_hat
   }
 
   # Jacobian of the corrected score
   phi_jac <- function(psi) {
-    I_hat <- compute_Ihat(psi, z_hat, x, fam$mu_dot)
-    M_hat <- compute_Mhat_bin(psi, x, fam$mu, p01, p10, pi_z)
+    I_hat <- compute_Ihat(psi, z_hat, x, fam$mu_dot, wt = wt)
+    M_hat <- compute_Mhat_bin(psi, x, fam$mu, p01, p10, pi_z, wt = wt)
     -(I_hat + M_hat)
   }
 
@@ -119,7 +136,7 @@ fit_cs_bin <- function(psi_init, y, z_hat, x, family, p01, p10, pi_z) {
 
 #' Fit the naive GLM estimator (multicategory misclassification)
 #' @keywords internal
-fit_naive_multi <- function(y, z_hat, x, K, family) {
+fit_naive_multi <- function(y, z_hat, x, K, family, wt = NULL) {
   fam <- get_link_funs(family)
   s <- K - 1
   # dummy-encode z_hat with baseline = 0
@@ -129,7 +146,11 @@ fit_naive_multi <- function(y, z_hat, x, K, family) {
   }
   xi_hat <- cbind(d_hat, x)
   dat <- data.frame(y = y, xi_hat)
-  fit <- stats::glm(y ~ . - 1, data = dat, family = fam$family)
+  if (is.null(wt)) {
+    fit <- stats::glm(y ~ . - 1, data = dat, family = fam$family)
+  } else {
+    fit <- stats::glm(y ~ . - 1, data = dat, family = fam$family, weights = wt)
+  }
   list(
     coefficients = unname(stats::coef(fit)),
     fitted       = stats::fitted(fit),
@@ -140,16 +161,18 @@ fit_naive_multi <- function(y, z_hat, x, K, family) {
 #' BCA for multicategory misclassification
 #' @keywords internal
 fit_bca_multi <- function(psi_naive, y, z_hat, x, K, family, Pi, pi_z,
-                          iterate = FALSE, max_iter = 50, tol = 1e-8) {
+                          iterate = FALSE, max_iter = 50, tol = 1e-8,
+                          wt = NULL) {
   fam <- get_link_funs(family)
-  I_hat_inv <- solve(compute_Ihat_multi(psi_naive, z_hat, x, K, fam$mu_dot))
+  I_hat_inv <- solve(compute_Ihat_multi(psi_naive, z_hat, x, K, fam$mu_dot,
+                                         wt = wt))
 
-  m_hat <- compute_mhat_multi(psi_naive, x, K, fam$mu, Pi, pi_z)
+  m_hat <- compute_mhat_multi(psi_naive, x, K, fam$mu, Pi, pi_z, wt = wt)
   psi   <- psi_naive - I_hat_inv %*% m_hat
   if (!iterate) return(as.numeric(psi))
 
   for (iter in seq_len(max_iter)) {
-    m_hat   <- compute_mhat_multi(psi, x, K, fam$mu, Pi, pi_z)
+    m_hat   <- compute_mhat_multi(psi, x, K, fam$mu, Pi, pi_z, wt = wt)
     psi_new <- psi_naive - I_hat_inv %*% m_hat
     if (max(abs(psi_new - psi)) < tol) break
     psi <- as.numeric(psi_new)
@@ -160,9 +183,11 @@ fit_bca_multi <- function(psi_naive, y, z_hat, x, K, family, Pi, pi_z,
 #' BCM for multicategory misclassification
 #' @keywords internal
 fit_bcm_multi <- function(psi_naive, y, z_hat, x, K, family, Pi, pi_z,
-                          iterate = FALSE, max_iter = 50, tol = 1e-8) {
+                          iterate = FALSE, max_iter = 50, tol = 1e-8,
+                          wt = NULL) {
   fam <- get_link_funs(family)
   n   <- length(y)
+  N   <- if (is.null(wt)) n else sum(wt)
   s   <- K - 1
   r   <- ncol(x)
 
@@ -177,12 +202,16 @@ fit_bcm_multi <- function(psi_naive, y, z_hat, x, K, family, Pi, pi_z,
     eta_base  <- as.numeric(x %*% alpha)
     eta_tilde <- eta_base + gamma[z_hat + 1]
     resid <- y - fam$mu(eta_tilde)
-    U_hat <- colMeans(xi_hat * resid)
-    m_hat <- compute_mhat_multi(psi, x, K, fam$mu, Pi, pi_z)
+    if (is.null(wt)) {
+      U_hat <- colMeans(xi_hat * resid)
+    } else {
+      U_hat <- colSums(wt * xi_hat * resid) / N
+    }
+    m_hat <- compute_mhat_multi(psi, x, K, fam$mu, Pi, pi_z, wt = wt)
     Phi   <- U_hat - m_hat
 
-    I_hat <- compute_Ihat_multi(psi, z_hat, x, K, fam$mu_dot)
-    M_hat <- compute_Mhat_multi(psi, x, K, fam$mu, Pi, pi_z)
+    I_hat <- compute_Ihat_multi(psi, z_hat, x, K, fam$mu_dot, wt = wt)
+    M_hat <- compute_Mhat_multi(psi, x, K, fam$mu, Pi, pi_z, wt = wt)
     step  <- solve(I_hat + M_hat, Phi)
 
     psi_new <- psi + step
@@ -194,9 +223,11 @@ fit_bcm_multi <- function(psi_naive, y, z_hat, x, K, family, Pi, pi_z,
 
 #' Corrected-score estimator for multicategory misclassification
 #' @keywords internal
-fit_cs_multi <- function(psi_init, y, z_hat, x, K, family, Pi, pi_z) {
+fit_cs_multi <- function(psi_init, y, z_hat, x, K, family, Pi, pi_z,
+                         wt = NULL) {
   fam <- get_link_funs(family)
   n   <- length(y)
+  N   <- if (is.null(wt)) n else sum(wt)
   s   <- K - 1
   r   <- ncol(x)
 
@@ -213,14 +244,18 @@ fit_cs_multi <- function(psi_init, y, z_hat, x, K, family, Pi, pi_z) {
     eta_base <- as.numeric(x %*% alpha)
     eta_tilde <- eta_base + gamma[z_hat + 1]
     resid <- y - fam$mu(eta_tilde)
-    score <- colMeans(xi_hat * resid)
-    m_hat <- compute_mhat_multi(psi, x, K, fam$mu, Pi, pi_z)
+    if (is.null(wt)) {
+      score <- colMeans(xi_hat * resid)
+    } else {
+      score <- colSums(wt * xi_hat * resid) / N
+    }
+    m_hat <- compute_mhat_multi(psi, x, K, fam$mu, Pi, pi_z, wt = wt)
     score - m_hat
   }
 
   phi_jac <- function(psi) {
-    I_hat <- compute_Ihat_multi(psi, z_hat, x, K, fam$mu_dot)
-    M_hat <- compute_Mhat_multi(psi, x, K, fam$mu, Pi, pi_z)
+    I_hat <- compute_Ihat_multi(psi, z_hat, x, K, fam$mu_dot, wt = wt)
+    M_hat <- compute_Mhat_multi(psi, x, K, fam$mu, Pi, pi_z, wt = wt)
     -(I_hat + M_hat)
   }
 

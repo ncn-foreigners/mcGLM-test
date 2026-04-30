@@ -24,5 +24,13 @@ get_link_funs <- function(family) {
     (mu_eta(eta + h) - mu_eta(eta - h)) / (2 * h)
   }
 
-  list(mu = mu, mu_dot = mu_eta, mu_ddot = mu_ddot, family = family)
+  # log-density function (for one-step method diagnostics)
+  dlog <- switch(family$family,
+    gaussian = function(y, mu, sigma) stats::dnorm(y, mu, sigma, log = TRUE),
+    poisson  = function(y, mu, ...) stats::dpois(y, mu, log = TRUE),
+    binomial = function(y, mu, ...) stats::dbinom(y, 1, mu, log = TRUE),
+    NULL
+  )
+
+  list(mu = mu, mu_dot = mu_eta, mu_ddot = mu_ddot, dlog = dlog, family = family)
 }

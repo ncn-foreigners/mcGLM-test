@@ -14,7 +14,9 @@
 #' @param family A \code{\link[stats]{family}} object or one of
 #'   \code{"poisson"}, \code{"binomial"}, \code{"gaussian"}.
 #' @param method Character vector of methods to compute. Any subset of
-#'   \code{c("naive", "bca", "bcm", "cs")}. Default is all four.
+#'   \code{c("naive", "bca", "bcm", "cs", "onestep")}. Default is all four
+#'   correction-based methods; specify \code{"onestep"} to include the
+#'   joint mixture-likelihood estimator via TMB.
 #' @param p01 False-positive rate P(Z_hat = 1 | Z = 0). Required for binary
 #'   misclassification when \code{method} includes \code{"bca"}, \code{"bcm"},
 #'   or \code{"cs"}.
@@ -31,6 +33,16 @@
 #' @param iterate Logical. If \code{TRUE}, BCA/BCM corrections are iterated
 #'   until convergence. Iterated BCM converges to the corrected-score (CS)
 #'   estimator. Default is \code{FALSE} (one-step correction).
+#' @param weights Character: \code{"fixed"} (default) uses known misclassification
+#'   rates; \code{"estimated"} estimates mixture weights via softmax (only for
+#'   \code{method = "onestep"}).
+#' @param freq_weights Optional numeric vector of frequency weights (length n).
+#'   Each observation contributes as if it were \code{freq_weights[i]} identical
+#'   copies. Must be positive. Default is \code{NULL} (unit weights).
+#' @param homoskedastic Logical. For Gaussian one-step estimation, whether to
+#'   assume a common error variance. Default is \code{TRUE}.
+#' @param optim_control List of control parameters passed to \code{nlminb}
+#'   (only for \code{method = "onestep"}).
 #'
 #' @return An object of class \code{"mcglm"}, a list with components:
 #'   \describe{
@@ -40,6 +52,7 @@
 #'     \item{family}{The GLM family.}
 #'     \item{K}{Number of categories.}
 #'     \item{n, p}{Sample size and number of parameters.}
+#'     \item{freq_weights}{Frequency weights used (NULL if unweighted).}
 #'   }
 #'
 #' @examples
@@ -65,17 +78,31 @@ mcglm <- function(y, z_hat, x, family = "poisson",
                   method = c("naive", "bca", "bcm", "cs"),
                   p01 = NULL, p10 = NULL, pi_z = NULL,
                   Pi = NULL, K = NULL,
-                  iterate = FALSE) {
+                  iterate = FALSE,
+                  weights = "fixed",
+                  freq_weights = NULL,
+                  homoskedastic = TRUE,
+                  optim_control = list()) {
 
   # --- input validation ---
   y     <- as.numeric(y)
   z_hat <- as.integer(z_hat)
   x     <- as.matrix(x)
   n     <- length(y)
-  method <- match.arg(method, c("naive", "bca", "bcm", "cs"),
+  method <- match.arg(method, c("naive", "bca", "bcm", "cs", "onestep"),
                       several.ok = TRUE)
 
   stopifnot(nrow(x) == n, length(z_hat) == n)
+
+  # --- validate frequency weights ---
+  wt <- NULL
+  if (!is.null(freq_weights)) {
+    wt <- as.numeric(freq_weights)
+    if (length(wt) != n)
+      stop("freq_weights must have length n (", n, "), got ", length(wt))
+    if (any(wt <= 0))
+      stop("freq_weights must be positive")
+  }
 
   # Determine binary vs multicategory
   if (is.null(K)) {
@@ -89,7 +116,7 @@ mcglm <- function(y, z_hat, x, family = "poisson",
   is_binary <- (K == 2L)
 
   # --- validate misclassification parameters ---
-  needs_correction <- any(method %in% c("bca", "bcm", "cs"))
+  needs_correction <- any(method %in% c("bca", "bcm", "cs", "onestep"))
   if (needs_correction) {
     if (is_binary) {
       if (is.null(p01) || is.null(p10) || is.null(pi_z))
@@ -108,35 +135,55 @@ mcglm <- function(y, z_hat, x, family = "poisson",
 
   if (is_binary) {
     # ---- binary path ----
-    naive <- fit_naive_bin(y, z_hat, x, family)
+    naive <- fit_naive_bin(y, z_hat, x, family, wt = wt)
     psi   <- naive$coefficients
     results$naive <- psi
     p_total <- length(psi)
 
     if ("bca" %in% method)
       results$bca <- fit_bca_bin(psi, y, z_hat, x, family, p01, p10, pi_z,
-                                 iterate = iterate)
+                                 iterate = iterate, wt = wt)
     if ("bcm" %in% method)
       results$bcm <- fit_bcm_bin(psi, y, z_hat, x, family, p01, p10, pi_z,
-                                 iterate = iterate)
+                                 iterate = iterate, wt = wt)
     if ("cs"  %in% method)
-      results$cs  <- fit_cs_bin(psi, y, z_hat, x, family, p01, p10, pi_z)
+      results$cs  <- fit_cs_bin(psi, y, z_hat, x, family, p01, p10, pi_z,
+                                wt = wt)
+
+    if ("onestep" %in% method) {
+      os <- fit_onestep_bin(y, z_hat, x, family, p01, p10, pi_z,
+                            weights = weights, homoskedastic = homoskedastic,
+                            optim_control = optim_control, wt = wt)
+      results$onestep <- os$coefficients
+      onestep_vcov    <- os$vcov
+      onestep_loglik  <- os$loglik
+    }
 
   } else {
     # ---- multicategory path ----
-    naive <- fit_naive_multi(y, z_hat, x, K, family)
+    naive <- fit_naive_multi(y, z_hat, x, K, family, wt = wt)
     psi   <- naive$coefficients
     results$naive <- psi
     p_total <- length(psi)
 
     if ("bca" %in% method)
       results$bca <- fit_bca_multi(psi, y, z_hat, x, K, family, Pi, pi_z,
-                                   iterate = iterate)
+                                   iterate = iterate, wt = wt)
     if ("bcm" %in% method)
       results$bcm <- fit_bcm_multi(psi, y, z_hat, x, K, family, Pi, pi_z,
-                                   iterate = iterate)
+                                   iterate = iterate, wt = wt)
     if ("cs"  %in% method)
-      results$cs  <- fit_cs_multi(psi, y, z_hat, x, K, family, Pi, pi_z)
+      results$cs  <- fit_cs_multi(psi, y, z_hat, x, K, family, Pi, pi_z,
+                                  wt = wt)
+
+    if ("onestep" %in% method) {
+      os <- fit_onestep_multi(y, z_hat, x, K, family, Pi, pi_z,
+                              weights = weights, homoskedastic = homoskedastic,
+                              optim_control = optim_control, wt = wt)
+      results$onestep <- os$coefficients
+      onestep_vcov    <- os$vcov
+      onestep_loglik  <- os$loglik
+    }
   }
 
   # --- parameter names ---
@@ -146,20 +193,29 @@ mcglm <- function(y, z_hat, x, family = "poisson",
     nms <- c(paste0("gamma", seq_len(K - 1)),
              paste0("alpha", seq_len(ncol(x)) - 1))
   }
-  results <- lapply(results, function(v) { names(v) <- nms; v })
+  # Name non-onestep results (onestep already has names from fit_onestep_*)
+  results <- lapply(results, function(v) {
+    if (is.null(names(v))) names(v) <- nms
+    v
+  })
 
-  structure(
-    list(
-      coefficients = results,
-      naive_fit    = naive$glm_fit,
-      method       = method,
-      family       = family,
-      K            = K,
-      n            = n,
-      p            = p_total
-    ),
-    class = "mcglm"
+  out <- list(
+    coefficients = results,
+    naive_fit    = naive$glm_fit,
+    method       = method,
+    family       = family,
+    K            = K,
+    n            = n,
+    p            = p_total,
+    freq_weights = wt
   )
+
+  if ("onestep" %in% method) {
+    out$vcov_onestep   <- onestep_vcov
+    out$loglik_onestep <- onestep_loglik
+  }
+
+  structure(out, class = "mcglm")
 }
 
 

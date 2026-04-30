@@ -4,38 +4,38 @@
 
 #' Sandwich variance for the naive estimator
 #'
-#' V_naive = A^(-1) C A^(-1) / n, where
-#' A = (1/n) sum dot_mu(eta_i) xi_hat xi_hat',
-#' C = (1/n) sum eps_i^2 xi_hat xi_hat'.
+#' V_naive = A^(-1) C A^(-1) / N, where
+#' A = (1/N) sum wt_i * dot_mu(eta_i) * xi_hat * xi_hat',
+#' C = (1/N) sum wt_i * eps_i^2 * xi_hat * xi_hat'.
 #' @keywords internal
-vcov_naive <- function(psi, y, z_hat, x, family) {
+vcov_naive <- function(psi, y, z_hat, x, family, wt = NULL) {
   fam    <- get_link_funs(family)
   xi_hat <- cbind(z_hat, x)
   n      <- length(y)
+  N      <- if (is.null(wt)) n else sum(wt)
   eta    <- as.numeric(xi_hat %*% psi)
   mu_val <- fam$mu(eta)
   w      <- fam$mu_dot(eta)
   eps    <- y - mu_val
 
-  A <- crossprod(xi_hat * w, xi_hat) / n
-  C <- crossprod(xi_hat * eps, xi_hat * eps) / n
+  if (is.null(wt)) {
+    A <- crossprod(xi_hat * w, xi_hat) / N
+    C <- crossprod(xi_hat * eps, xi_hat * eps) / N
+  } else {
+    A <- crossprod(xi_hat * (wt * w), xi_hat) / N
+    C <- crossprod(xi_hat * (wt * eps), xi_hat * eps) / N
+  }
   A_inv <- solve(A)
-  A_inv %*% C %*% A_inv / n
+  A_inv %*% C %*% A_inv / N
 }
 
 #' Sandwich variance for BCA/BCM estimators (binary)
 #'
 #' Under drifting regime (\code{corrected = FALSE}), uses the naive sandwich
-#' A^(-1) C A^(-1) / n evaluated at the corrected estimate.
+#' A^(-1) C A^(-1) / N evaluated at the corrected estimate.
 #'
 #' Under fixed misclassification (\code{corrected = TRUE}), uses the
-#' influence-function approach via delta method. The linearization of the
-#' BCA/BCM mapping around the naive probability limit gives:
-#'
-#' IF_i = G * A^(-1) * u_i - H^(-1) * (m_i - m_bar)
-#'
-#' where u_i = xi_hat_i * resid_i (evaluated at psi_naive), and
-#' G = I_p - H^{-1} M with H = A (BCA) or H = A + M (BCM).
+#' influence-function approach via delta method.
 #'
 #' @param psi_naive The naive estimator (linearization point).
 #' @param psi_bc The corrected estimator (BCA or BCM).
@@ -43,13 +43,15 @@ vcov_naive <- function(psi, y, z_hat, x, family) {
 vcov_bc_bin <- function(psi_bc, y, z_hat, x, family,
                         p01 = NULL, p10 = NULL, pi_z = NULL,
                         psi_naive = NULL,
-                        type = c("bca", "bcm"), corrected = FALSE) {
-  if (!corrected) return(vcov_naive(psi_bc, y, z_hat, x, family))
+                        type = c("bca", "bcm"), corrected = FALSE,
+                        wt = NULL) {
+  if (!corrected) return(vcov_naive(psi_bc, y, z_hat, x, family, wt = wt))
 
   type   <- match.arg(type)
   fam    <- get_link_funs(family)
   xi_hat <- cbind(z_hat, x)
   n      <- length(y)
+  N      <- if (is.null(wt)) n else sum(wt)
   p      <- length(psi_bc)
 
   # Evaluate residuals and Fisher info at psi_naive (the linearization point)
@@ -58,11 +60,19 @@ vcov_bc_bin <- function(psi_bc, y, z_hat, x, family,
   w      <- fam$mu_dot(eta)
   resid  <- y - fam$mu(eta)
 
-  A_hat <- crossprod(xi_hat * w, xi_hat) / n
+  if (is.null(wt)) {
+    A_hat <- crossprod(xi_hat * w, xi_hat) / N
+  } else {
+    A_hat <- crossprod(xi_hat * (wt * w), xi_hat) / N
+  }
   A_inv <- solve(A_hat)
-  M_hat <- compute_Mhat_bin(psi_naive, x, fam$mu, p01, p10, pi_z)
+  M_hat <- compute_Mhat_bin(psi_naive, x, fam$mu, p01, p10, pi_z, wt = wt)
   m_mat <- compute_m_bin(psi_naive, x, fam$mu, p01, p10, pi_z)  # n x p
-  m_bar <- colMeans(m_mat)
+  if (is.null(wt)) {
+    m_bar <- colMeans(m_mat)
+  } else {
+    m_bar <- colSums(wt * m_mat) / N
+  }
 
   # Jacobian of the correction map and the "H" matrix
   if (type == "bca") {
@@ -75,8 +85,6 @@ vcov_bc_bin <- function(psi_bc, y, z_hat, x, family,
   }
 
   # Per-observation influence function (as rows of n x p matrix):
-  # IF_i^T = u_i^T A^{-1} G^T - w_i^T H^{-T}
-  # where u_i = xi_hat_i * resid_i, w_i = m_i - m_bar
   score_mat    <- xi_hat * resid                       # n x p (rows = u_i^T)
   centered_m   <- sweep(m_mat, 2, m_bar)               # n x p (rows = w_i^T)
 
@@ -85,19 +93,25 @@ vcov_bc_bin <- function(psi_bc, y, z_hat, x, family,
 
   IF_mat <- score_mat %*% L1 - centered_m %*% L2       # n x p
 
-  crossprod(IF_mat) / n^2
+  if (is.null(wt)) {
+    crossprod(IF_mat) / N^2
+  } else {
+    crossprod(IF_mat * wt, IF_mat) / N^2
+  }
 }
 
 #' Sandwich variance for corrected-score estimator (binary)
 #'
-#' V_cs = J^{-1} S (J^{-1})' / n, where
-#' J = (1/n) sum d phi_i / d psi',
-#' S = (1/n) sum phi_i phi_i'.
+#' V_cs = J^{-1} S (J^{-1})' / N, where
+#' J = weighted (1/N) sum d phi_i / d psi',
+#' S = weighted (1/N) sum phi_i phi_i'.
 #' @keywords internal
-vcov_cs_bin <- function(psi, y, z_hat, x, family, p01, p10, pi_z) {
+vcov_cs_bin <- function(psi, y, z_hat, x, family, p01, p10, pi_z,
+                        wt = NULL) {
   fam    <- get_link_funs(family)
   xi_hat <- cbind(z_hat, x)
   n      <- length(y)
+  N      <- if (is.null(wt)) n else sum(wt)
 
   eta_tilde <- as.numeric(xi_hat %*% psi)
   resid     <- y - fam$mu(eta_tilde)
@@ -106,15 +120,19 @@ vcov_cs_bin <- function(psi, y, z_hat, x, family, p01, p10, pi_z) {
   # phi_i = xi_hat_i * resid_i - m_i(psi)
   phi_mat <- xi_hat * resid - m_mat   # n x p
 
-  S <- crossprod(phi_mat) / n
+  if (is.null(wt)) {
+    S <- crossprod(phi_mat) / N
+  } else {
+    S <- crossprod(phi_mat * wt, phi_mat) / N
+  }
 
   # J = -(I + M) where I = Ihat, M = Mhat
-  I_hat <- compute_Ihat(psi, z_hat, x, fam$mu_dot)
-  M_hat <- compute_Mhat_bin(psi, x, fam$mu, p01, p10, pi_z)
+  I_hat <- compute_Ihat(psi, z_hat, x, fam$mu_dot, wt = wt)
+  M_hat <- compute_Mhat_bin(psi, x, fam$mu, p01, p10, pi_z, wt = wt)
   J     <- -(I_hat + M_hat)
   J_inv <- solve(J)
 
-  J_inv %*% S %*% t(J_inv) / n
+  J_inv %*% S %*% t(J_inv) / N
 }
 
 
@@ -122,9 +140,10 @@ vcov_cs_bin <- function(psi, y, z_hat, x, family, p01, p10, pi_z) {
 
 #' Sandwich variance for naive estimator (multicategory)
 #' @keywords internal
-vcov_naive_multi <- function(psi, y, z_hat, x, K, family) {
+vcov_naive_multi <- function(psi, y, z_hat, x, K, family, wt = NULL) {
   fam <- get_link_funs(family)
   n   <- length(y)
+  N   <- if (is.null(wt)) n else sum(wt)
   s   <- K - 1
   r   <- ncol(x)
 
@@ -140,10 +159,15 @@ vcov_naive_multi <- function(psi, y, z_hat, x, K, family) {
   w   <- fam$mu_dot(eta_tilde)
   eps <- y - fam$mu(eta_tilde)
 
-  A <- crossprod(xi_hat * w, xi_hat) / n
-  C <- crossprod(xi_hat * eps, xi_hat * eps) / n
+  if (is.null(wt)) {
+    A <- crossprod(xi_hat * w, xi_hat) / N
+    C <- crossprod(xi_hat * eps, xi_hat * eps) / N
+  } else {
+    A <- crossprod(xi_hat * (wt * w), xi_hat) / N
+    C <- crossprod(xi_hat * (wt * eps), xi_hat * eps) / N
+  }
   A_inv <- solve(A)
-  A_inv %*% C %*% A_inv / n
+  A_inv %*% C %*% A_inv / N
 }
 
 #' Sandwich variance for BCA/BCM estimators (multicategory)
@@ -151,12 +175,15 @@ vcov_naive_multi <- function(psi, y, z_hat, x, K, family) {
 vcov_bc_multi <- function(psi_bc, y, z_hat, x, K, family,
                           Pi = NULL, pi_z = NULL,
                           psi_naive = NULL,
-                          type = c("bca", "bcm"), corrected = FALSE) {
-  if (!corrected) return(vcov_naive_multi(psi_bc, y, z_hat, x, K, family))
+                          type = c("bca", "bcm"), corrected = FALSE,
+                          wt = NULL) {
+  if (!corrected) return(vcov_naive_multi(psi_bc, y, z_hat, x, K, family,
+                                           wt = wt))
 
   type <- match.arg(type)
   fam  <- get_link_funs(family)
   n    <- length(y)
+  N    <- if (is.null(wt)) n else sum(wt)
   s    <- K - 1
   r    <- ncol(x)
   p    <- s + r
@@ -175,11 +202,19 @@ vcov_bc_multi <- function(psi_bc, y, z_hat, x, K, family,
   w     <- fam$mu_dot(eta_tilde)
   resid <- y - fam$mu(eta_tilde)
 
-  A_hat <- crossprod(xi_hat * w, xi_hat) / n
+  if (is.null(wt)) {
+    A_hat <- crossprod(xi_hat * w, xi_hat) / N
+  } else {
+    A_hat <- crossprod(xi_hat * (wt * w), xi_hat) / N
+  }
   A_inv <- solve(A_hat)
-  M_hat <- compute_Mhat_multi(psi_naive, x, K, fam$mu, Pi, pi_z)
+  M_hat <- compute_Mhat_multi(psi_naive, x, K, fam$mu, Pi, pi_z, wt = wt)
   m_mat <- compute_m_multi(psi_naive, x, K, fam$mu, Pi, pi_z)
-  m_bar <- colMeans(m_mat)
+  if (is.null(wt)) {
+    m_bar <- colMeans(m_mat)
+  } else {
+    m_bar <- colSums(wt * m_mat) / N
+  }
 
   if (type == "bca") {
     G     <- diag(p) - A_inv %*% M_hat
@@ -198,14 +233,20 @@ vcov_bc_multi <- function(psi_bc, y, z_hat, x, K, family,
 
   IF_mat <- score_mat %*% L1 - centered_m %*% L2
 
-  crossprod(IF_mat) / n^2
+  if (is.null(wt)) {
+    crossprod(IF_mat) / N^2
+  } else {
+    crossprod(IF_mat * wt, IF_mat) / N^2
+  }
 }
 
 #' Sandwich variance for corrected-score estimator (multicategory)
 #' @keywords internal
-vcov_cs_multi <- function(psi, y, z_hat, x, K, family, Pi, pi_z) {
+vcov_cs_multi <- function(psi, y, z_hat, x, K, family, Pi, pi_z,
+                          wt = NULL) {
   fam <- get_link_funs(family)
   n   <- length(y)
+  N   <- if (is.null(wt)) n else sum(wt)
   s   <- K - 1
   r   <- ncol(x)
   p   <- s + r
@@ -223,12 +264,16 @@ vcov_cs_multi <- function(psi, y, z_hat, x, K, family, Pi, pi_z) {
   m_mat <- compute_m_multi(psi, x, K, fam$mu, Pi, pi_z)
 
   phi_mat <- xi_hat * resid - m_mat
-  S <- crossprod(phi_mat) / n
+  if (is.null(wt)) {
+    S <- crossprod(phi_mat) / N
+  } else {
+    S <- crossprod(phi_mat * wt, phi_mat) / N
+  }
 
-  I_hat <- compute_Ihat_multi(psi, z_hat, x, K, fam$mu_dot)
-  M_hat <- compute_Mhat_multi(psi, x, K, fam$mu, Pi, pi_z)
+  I_hat <- compute_Ihat_multi(psi, z_hat, x, K, fam$mu_dot, wt = wt)
+  M_hat <- compute_Mhat_multi(psi, x, K, fam$mu, Pi, pi_z, wt = wt)
   J     <- -(I_hat + M_hat)
   J_inv <- solve(J)
 
-  J_inv %*% S %*% t(J_inv) / n
+  J_inv %*% S %*% t(J_inv) / N
 }
