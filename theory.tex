@@ -1,0 +1,1161 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb, amsthm, bm}
+\usepackage{bbm}
+\usepackage{mathtools}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage{hyperref}
+\usepackage[round,authoryear]{natbib}
+
+\hypersetup{colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue}
+
+% --- theorem environments ---
+\newtheorem{theorem}{Theorem}
+\newtheorem{proposition}{Proposition}
+\newtheorem{lemma}{Lemma}
+\newtheorem{corollary}{Corollary}
+\theoremstyle{definition}
+\newtheorem{assumption}{Assumption}
+\newtheorem{definition}{Definition}
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}
+
+% --- macros ---
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Pp}{\mathbb{P}}
+\newcommand{\toP}{\xrightarrow{\,p\,}}
+\newcommand{\tod}{\xrightarrow{\,d\,}}
+\newcommand{\ind}{\mathbbm{1}}
+\newcommand{\norm}[1]{\left\lVert #1 \right\rVert}
+
+\title{\bf Bias Corrections for GLMs with Misclassified Covariates}
+\author{}
+\date{\vspace{-1.25em}March 28, 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+AI/ML generated covariates may lead to bias in regression even if probability of error is very small. This paper states explicit assumptions under which additive and multiplicative bias corrections proposed by \citep{battaglia2025} can be generalized for generalized linear models and remove the leading $n^{-1/2}$ bias induced by rare misclassification in a drifting-sequence regime, which probabilities tends to zero at rate $n^{-1/2}$. The second part presents a corrected-score estimator that is consistent under fixed misclassification probabilities. We give proofs of consistency and asymptotic unbiasedness of these estimators. Here, asymptotic unbiasedness is understood that the $\sqrt{n}$-limit distribution is centered at zero.
+\end{abstract}
+
+\section{Introduction}
+Using AI models to generate data is a common practice these days. One of their standard tasks is to classify text or images into categories. However, ML algorithms are not perfect and their misclassification cause a measurement error in the data, that can affect regression and cause estimators to be biases. This problem was considered for linear models with drifting-sequence misclassification i. e. the false-positive rate tending to zero at rate $n^{-1/2}$ \citep{battaglia2025}. However, lots of practical problems require counting or predicting probability and standard linear models does not work for them. Thus, the goal of this paper is to extend there results into GLMs and propose bias-correcting estimators for regression in GLMs with misclassified covariates. Also in the paper there is presented a corrected-score estimator, that reduces bias without assumed drifting-regime but fixed misclassification probabilities.
+
+\section{Setup and notation}
+\subsection{Naive estimator}
+Let $\{(Y_i,\theta_i,q_i,\hat\theta_i)\}_{i=1}^n$ be an i.i.d. sample, where $Y_i$ is a scalar response, $q_i\in\R^r$ is observed without error, and $\theta_i\in\R^s$ is a latent or error-prone regressor observed through a proxy $\hat\theta_i$. Define
+\[
+\xi_i = \begin{pmatrix}\theta_i\\ q_i\end{pmatrix}\in\R^p,\qquad \hat\xi_i=\begin{pmatrix}\hat\theta_i\\ q_i\end{pmatrix}\in\R^p,\qquad p=s+r,
+\]
+with parameter vector $\psi=(\gamma^\top,\alpha^\top)^\top\in\R^p$.
+
+We consider a canonical GLM with conditional mean
+\[
+\mu_i(\psi)=\mu(\psi^\top\xi_i),\qquad \mu(\eta)=g^{-1}(\eta),
+\]
+where $\mu$ is the inverse canonical link and $\dot\mu$ denotes its derivative.
+Define the \emph{true-data} score-type moment condition
+\[
+U(\psi):=\E\big[\xi_i\{Y_i-\mu(\psi^\top\xi_i)\}\big].
+\]
+Let $\psi_0$ be the target parameter satisfying $U(\psi_0)=0$.
+
+\begin{definition}
+Define the two-step naive estimator as any of the solutions of the proxy score equation
+\begin{equation}
+\hat U_n(\psi)=\frac{1}{n}\sum_{i=1}^n \hat\xi_i\{Y_i-\mu(\psi^\top\hat\xi_i)\}=0
+\label{eq:naive-score}
+\end{equation}
+and denote it by $\hat\psi$.
+\end{definition}
+
+\subsection{Corrected-score estimator under fixed misclassification}
+When misclassification probabilities are fixed the naive estimator in \eqref{eq:naive-score} is typically inconsistent. A consistent alternative is to solve an unbiased estimating equation.
+
+We focus on a common case: $\theta_i=Z_i\in\{0,1\}$ is a binary regressor observed with misclassification $\hat Z_i\in\{0,1\}$.
+Let $x_i\in\R^r$ denote observed covariates (including an intercept if desired), and write
+\[
+\xi_i=(Z_i,x_i^\top)^\top,\qquad \hat\xi_i=(\hat Z_i,x_i^\top)^\top,\qquad \psi=(\gamma,\alpha^\top)^\top.
+\]
+For binary classification problem assume nondifferential misclassification:
+\[\Pp(\hat Z_i=1\mid Z_i,Y_i,x_i)=\Pp(\hat Z_i=1\mid Z_i).\]
+Let
+\[p_{01}:=\Pp(\hat Z=1\mid Z=0),\quad p_{10}:=\Pp(\hat Z=0\mid Z=1),\quad \pi:=\Pp(Z=1),\]
+\[
+\tilde\eta_i(\psi)=\gamma\hat Z_i+\alpha^\top x_i,\qquad \eta_i^*=\gamma Z_i+\alpha^\top x_i
+\]
+and define the toggle gap
+\begin{equation}
+\delta_i(\psi):=\mu(\gamma+\alpha^\top x_i)-\mu(\alpha^\top x_i),
+\label{eq:delta}
+\end{equation}
+with constants $c_1=p_{01}(1-\pi)$ and $c_2=p_{01}(1-\pi)-p_{10}\pi$, and consider the adjustment
+\begin{equation}
+ m_i(\psi):=\begin{pmatrix}-c_1\,\delta_i(\psi)\\-c_2\,\delta_i(\psi)\,x_i\end{pmatrix}.
+\label{eq:mi}
+\end{equation}
+
+\begin{definition}[Corrected-score estimator]
+With defined the per-observation corrected-score contribution
+\begin{equation}
+\phi_i(\psi):=\hat\xi_i\{Y_i-\mu(\tilde\eta_i(\psi))\}-m_i(\psi)
+\label{eq:phi}
+\end{equation}
+define the corrected-score estimator $\hat\psi_{\mathrm{cs}}$ as any solution of
+\begin{equation}
+\frac{1}{n}\sum_{i=1}^n \phi_i(\psi)=0.
+\label{eq:cs}
+\end{equation}
+\end{definition}
+
+
+
+% \subsection{Additive and multiplicative bias corrections for binary misclassification (BCA/BCM)}
+% The generic BCA/BCM definition above becomes fully explicit for binary misclassification.
+% Write the naive proxy score as
+% \[
+% \hat U_n(\psi)=\frac{1}{n}\sum_{i=1}^n \hat\xi_i\{Y_i-\mu(\tilde\eta_i(\psi))\},
+% \qquad \tilde\eta_i(\psi)=\gamma \hat Z_i+\alpha^\top x_i .
+% \]
+% Let the \emph{score drift} be $m(\psi):=\E[\hat U_n(\psi)]$ and use the sample analogue
+% \[
+% \hat m(\psi)=\frac{1}{n}\sum_{i=1}^n m_i(\psi),
+% \qquad 
+% m_i(\psi)=\begin{pmatrix}-c_1\,\delta_i(\psi)\\-c_2\,\delta_i(\psi)\,x_i\end{pmatrix},
+% \]
+% with $\delta_i(\psi)$ as in \eqref{eq:delta} and $(c_1,c_2)$ as in \eqref{eq:mi}.
+% Define the per-observation Fisher information of the naive score,
+% \[
+% I(\psi):=\E\big[\dot\mu(\tilde\eta_i(\psi))\,\hat\xi_i\hat\xi_i^\top\big],
+% \qquad 
+% \hat I(\psi):=\frac{1}{n}\sum_{i=1}^n \dot\mu(\tilde\eta_i(\psi))\,\hat\xi_i\hat\xi_i^\top .
+% \]
+
+% \begin{definition}[BCA and BCM estimators for binary misclassification]
+% The additive bias correction (BCA) estimator is
+% \begin{equation}
+% \hat\psi^{\mathrm{mis}}_{\mathrm{bca}}:=\hat\psi-\hat I(\hat\psi)^{-1}\hat m(\hat\psi).
+% \label{eq:bca-mis}
+% \end{equation}
+% Let $M(\psi):=\partial m(\psi)/\partial\psi^\top$ and let $\hat M(\psi)$ be any consistent estimator.
+% The multiplicative bias correction (BCM) estimator is
+% \begin{equation}
+% \hat\psi^{\mathrm{mis}}_{\mathrm{bcm}}:=\hat\psi-\big(\hat I(\hat\psi)+\hat M(\hat\psi)\big)^{-1}\hat m(\hat\psi).
+% \label{eq:bcm-mis}
+% \end{equation}
+% \end{definition}
+
+\section{Assumptions}
+
+We separate assumptions for BCA/BCM under a drifting-sequence regime, binary misclassification, and corrected-score estimation under fixed misclassification.
+
+\subsection{Assumptions for drifting-sequence BCA/BCM}\label{sec:assump-drift}
+
+\begin{assumption}[Data and moments]\label{ass:moments}
+$\{(Y_i,\xi_i,\hat\xi_i)\}_{i=1}^n$ are i.i.d. and have sufficiently many moments for the LLN/CLT steps below.
+A convenient sufficient condition is
+\[
+\E\norm{\xi_i}^4<\infty,\qquad \E\norm{\hat\xi_i}^4<\infty,\qquad \E|Y_i|^4<\infty.
+\]
+\end{assumption}
+
+\begin{assumption}[Smoothness]\label{ass:smooth}
+$\mu$ is twice continuously differentiable and $\dot\mu$ is Lipschitz.
+\end{assumption}
+\begin{assumption}[Uniqueness of the root]
+    The equation $U(\psi) = 0$ has the unique solution $\psi_0$ in a compact set $\Psi.$
+\end{assumption}
+
+\begin{assumption}[Identification / information]
+Let
+\begin{equation}
+A:=\E\big[\dot\mu(\psi_0^\top\xi_i)\,\xi_i\xi_i^\top\big].
+\label{eq:A}
+\end{equation}
+Assume $A$ is nonsingular.
+\end{assumption}
+
+\begin{assumption}[LLN/CLT with generated regressors]\label{ass:LLN/CLT}
+\begin{align}
+\frac{1}{n}\sum_{i=1}^n \dot\mu(\psi_0^\top\hat\xi_i)\,\hat\xi_i\hat\xi_i^\top &\toP A,\label{eq:llnA}\\
+\frac{1}{\sqrt{n}}\sum_{i=1}^n \hat\xi_i\varepsilon_i &\tod N(0,C),\label{eq:clt}
+\end{align}
+where $\varepsilon_i:=Y_i-\mu(\psi_0^\top\xi_i)$ and $C:=\E[\varepsilon_i^2\xi_i\xi_i^\top]$.
+\end{assumption}
+
+\begin{assumption}[Uniform convergence]\label{ass:ULLN}
+The ULLN holds for the proxy-score estimator
+\begin{equation}
+\sup_{\psi\in\Psi}\big\|\hat U_n(\psi)-U(\psi)\big\|\toP 0.
+\label{eq:U-unif}
+\end{equation}
+\end{assumption}
+
+\begin{assumption}[Weighted drifting sequence]\label{ass:drift}
+There exist a scalar $\kappa\in\R$ and a matrix $\Omega_w\in\R^{s\times s}$ such that
+\begin{align}
+\frac{1}{\sqrt{n}}\sum_{i=1}^n \dot\mu(\psi_0^\top\xi_i)\,\hat\theta_i(\hat\theta_i-\theta_i)^\top &\toP \kappa\Omega_w,\label{eq:drift1}\\
+\frac{1}{\sqrt{n}}\sum_{i=1}^n \dot\mu(\psi_0^\top\xi_i)\,(\hat\theta_i-\theta_i)q_i^\top &\toP 0.
+\label{eq:drift2}
+\end{align}
+\end{assumption}
+
+\begin{assumption}[Remainder control]\label{ass:remainder}
+The Taylor remainder from linearizing $\mu(\psi_0^\top\hat\xi_i)$ around $\xi_i$ is negligible in average:
+\begin{equation}
+\sqrt{n}\,\Bigg\|\frac{1}{n}\sum_{i=1}^n\hat\xi_i\Big\{\mu(\psi_0^\top\xi_i)-\mu(\psi_0^\top\hat\xi_i)+\dot\mu(\psi_0^\top\xi_i)\,\gamma_0^\top(\hat\theta_i-\theta_i)\Big\}\Bigg\|\toP 0.
+\label{eq:remainder}
+\end{equation}
+\end{assumption}
+
+\begin{assumption}[Estimability of drift objects]
+There exist estimators $\hat A\toP A, \hat\Omega_w \toP \Omega_w, \hat\gamma_0 \toP \gamma_0$, and $\hat\kappa\toP\kappa$, constructed from auxiliary information (e.g., validation data) or structural knowledge about the first-stage procedure.
+\end{assumption}
+
+\begin{remark}
+Assumption~\ref{ass:remainder} is where the intended \emph{measurement-error regime} is encoded. It holds, for example, if $\sup_i |\gamma_0^\top(\hat\theta_i-\theta_i)|=o_P(1)$ and $\dot\mu$ is Lipschitz, but it does \emph{not} automatically hold for generated labels with rare but $O(1)$ flips (higher-order terms can then contribute at order $n^{-1/2}$).
+\end{remark}
+
+\subsection{Assumptions for binary misclassification model}
+
+\begin{assumption}[Independence]\label{ass:indep}
+    Covariates $Z_i$ and $x_i$ are independent.
+\end{assumption}
+
+\begin{assumption}
+    The moment $\E [(1+\|x_i\|^2)^2\delta_i (\psi_0)^2]$ is finite.
+\end{assumption}
+
+\subsection{Assumptions for corrected-score estimation}
+
+\begin{assumption}[Misclassification model]\label{ass:est_proba}
+$\hat Z$ is nondifferential given $(Z,x)$ and the misclassification probabilities $(p_{01},p_{10})$ and prevalence $\pi$ are known.
+\end{assumption}
+
+\begin{assumption}[Regularity for Z-estimation]\label{ass:regularity}
+Let $\Phi(\psi):=\E[\phi_i(\psi)]$ and $\Phi_n(\psi):=\frac{1}{n}\sum_i\phi_i(\psi)$. Assume:
+\begin{enumerate}[label=(\roman*), leftmargin=1.6em]
+\item $\Phi$ is continuous on a compact neighborhood $\Psi$ of $\psi_0$;
+\item $\Phi(\psi)=0$ has a unique solution at $\psi_0$;
+\item $J:=\E[\partial\phi_i(\psi_0)/\partial\psi^\top]$ exists and is nonsingular;
+\item a uniform law of large numbers holds: $\sup_{\psi\in\Psi}\norm{\Phi_n(\psi)-\Phi(\psi)}\toP 0$;
+\item a uniform law of large numbers also holds for the Jacobian: 
+\[
+\sup_{\psi\in\Psi}\big\|\hat J_n(\psi)-\E[j_i(\psi)]\big\|\toP 0.
+\]
+with $\hat J_n(\psi):=n^{-1}\sum_i j_i(\psi)$ and $j_i(\psi):=\partial\phi_i(\psi)/\partial\psi^\top$ being continuous in some neighborhood of $\psi_0$
+\item a multivariate CLT holds: $\sqrt{n}\,\Phi_n(\psi_0)\tod N(0,S)$ with $S:=\E[\phi_i(\psi_0)\phi_i(\psi_0)^\top]$.
+\end{enumerate}
+\end{assumption}
+
+\section{Main results and proofs}
+
+\subsection{Two-step expansion under weighted drift}\label{sec:drift-theorem}
+Even in the drifting regime misclassification may cause bias in estimation. The precise formula for that is given by the following theorem.
+
+\begin{theorem}\label{thm:twostep}
+Under the assumptions in Section~\ref{sec:assump-drift}, any solution $\hat\psi\in \Psi$ of \eqref{eq:naive-score} satisfies
+\begin{equation}
+\sqrt{n}(\hat\psi-\psi_0)\tod N\Big(-A^{-1}b,\,A^{-1}CA^{-1}\Big),\qquad b:=\kappa\begin{pmatrix}\Omega_w\gamma_0\\ 0\end{pmatrix}.
+\label{eq:twostep-limit}
+\end{equation}
+In particular, $\hat\psi\toP\psi_0$.
+\end{theorem}
+
+\begin{proof}
+Let $\hat\psi$ be any solution of $\hat U_n(\psi)=0$ with $\hat\psi\in\Psi$ and fix $\varepsilon>0$.
+Because $U$ is continuous on a compact set $\Psi$ and has a unique zero at $\psi_0$, the set
+$\{\psi\in\Psi:\ \|\psi-\psi_0\|\ge\varepsilon\}$ is compact and does not contain a zero of $U$. Therefore the minimum of $\|U(\psi)\|$ over that set is achieved and strictly positive. Let
+\begin{equation}
+c(\varepsilon):=\inf_{\psi\in\Psi:\ \|\psi-\psi_0\|\ge\varepsilon}\|U(\psi)\|>0.
+\label{eq:sep}
+\end{equation}
+Now consider the event
+\[
+\mathcal E_n(\varepsilon):=\Big\{\sup_{\psi\in\Psi}\|\hat U_n(\psi)-U(\psi)\|<\tfrac12 c(\varepsilon)\Big\}.
+\]
+By Assumption\ref{ass:ULLN}, $\Pp\{\mathcal E_n(\varepsilon)\}\to 1$.
+On $\mathcal E_n(\varepsilon)$, for any $\psi\in\Psi$ with $\|\psi-\psi_0\|\ge\varepsilon$ we have
+\[
+\|\hat U_n(\psi)\|\ge \|U(\psi)\|-\sup_{\psi'\in\Psi}\|\hat U_n(\psi')-U(\psi')\|
+\ge c(\varepsilon)-\tfrac12 c(\varepsilon)=\tfrac12 c(\varepsilon)>0.
+\]
+Hence, on $\mathcal E_n(\varepsilon)$, no root of $\hat U_n(\psi)=0$ can satisfy
+$\|\psi-\psi_0\|\ge\varepsilon$, so the chosen root $\hat\psi$ must satisfy $\|\hat\psi-\psi_0\|<\varepsilon$.
+Since $\Pp\{\mathcal E_n(\varepsilon)\}\to 1$ and $\varepsilon$ is arbitrary, $\hat\psi\toP\psi_0$ and $\hat\psi$ is a consistent estimator of $\psi_0.$
+
+Now we can decompose the proxy-score equation to get
+\begin{align}
+\sqrt{n}\,\hat U_n(\psi_0)
+&=\frac{1}{\sqrt{n}}\sum_{i=1}^n \hat\xi_i\big\{Y_i-\mu(\psi_0^\top\hat\xi_i)\big\}\nonumber\\
+&=\frac{1}{\sqrt{n}}\sum_{i=1}^n \hat\xi_i\varepsilon_i
++\frac{1}{\sqrt{n}}\sum_{i=1}^n \hat\xi_i\Big\{\mu(\psi_0^\top\xi_i)-\mu(\psi_0^\top\hat\xi_i)\Big\}.
+\label{eq:decomp-new}
+\end{align}
+By Assumption~\ref{ass:LLN/CLT}, the first term converges in distribution to $N(0,C)$.
+
+For the second term, use a first-order Taylor expansion in the $\theta$ component of $\hat\xi_i$:
+\[
+\mu(\psi_0^\top\xi_i)-\mu(\psi_0^\top\hat\xi_i)
+=-\dot\mu(\psi_0^\top\xi_i)\,\gamma_0^\top(\hat\theta_i-\theta_i)+r_i,
+\]
+where the remainder $r_i$ is negligibly small in average by Assumption~\ref{ass:remainder} so we can rewrite this as
+\begin{equation}
+\frac{1}{\sqrt{n}}\sum_{i=1}^n \hat\xi_i\Big\{\mu(\psi_0^\top\xi_i)-\mu(\psi_0^\top\hat\xi_i)\Big\}
+=
+-\frac{1}{\sqrt{n}}\sum_{i=1}^n \hat\xi_i\dot\mu(\psi_0^\top\xi_i)\,\gamma_0^\top(\hat\theta_i-\theta_i)+o_P(1).
+\label{eq:drift-new}
+\end{equation}
+By Assumption \ref{ass:drift} the $q$-block converges to $0$ and the $\theta$-block satisfies
+\[
+-\Bigg\{\frac{1}{\sqrt{n}}\sum_{i=1}^n \dot\mu(\psi_0^\top\xi_i)\,\hat\theta_i(\hat\theta_i-\theta_i)^\top\Bigg\}\gamma_0
+\toP -\kappa\Omega_w\gamma_0.
+\]
+Hence,
+\begin{equation}
+\sqrt{n}\,\hat U_n(\psi_0)\tod N(0,C)-b,
+\qquad \text{where } b:=\kappa\begin{pmatrix}\Omega_w\gamma_0\\0\end{pmatrix}.
+\label{eq:Un-limit-new}
+\end{equation}
+
+Let
+\[
+\hat J_n(\psi):=\frac{\partial\hat U_n(\psi)}{\partial\psi^\top}
+=-\frac{1}{n}\sum_{i=1}^n \dot\mu(\psi^\top\hat\xi_i)\,\hat\xi_i\hat\xi_i^\top
+\]
+be a sample Jacobian. After expanding $\hat U_n(\hat\psi)$ around $\psi_0$ we get:
+\begin{equation}
+0=\hat U_n(\hat\psi)=\hat U_n(\psi_0)+\hat J_n(\psi_0)(\hat\psi-\psi_0)+R_n,
+\label{eq:taylor-psi0}
+\end{equation}
+where $R_n$ is a Taylor remainder. Because $\dot\mu$ is Lipschitz from Assumption \ref{ass:smooth}, there exists $L<\infty$ such that for each $i$,
+\[
+\Big\|\hat\xi_i\big(\mu(\hat\psi^\top\hat\xi_i)-\mu(\psi_0^\top\hat\xi_i)-\dot\mu(\psi_0^\top\hat\xi_i)\,(\hat\psi-\psi_0)^\top\hat\xi_i\big)\Big\|
+\le \frac{L}{2}\,\|\hat\xi_i\|^3\,\|\hat\psi-\psi_0\|^2.
+\]
+Summing and dividing by $n$ gives bound of the Taylor remainder
+\begin{equation}
+\|R_n\|\le \frac{L}{2}\Big(\frac{1}{n}\sum_{i=1}^n \|\hat\xi_i\|^3\Big)\,\|\hat\psi-\psi_0\|^2.
+\label{eq:Rn-bound}
+\end{equation}
+
+After rearranging \eqref{eq:taylor-psi0} we get:
+\begin{equation}
+\hat\psi-\psi_0=-\hat J_n(\psi_0)^{-1}\hat U_n(\psi_0)-\hat J_n(\psi_0)^{-1}R_n.
+\label{eq:solve}
+\end{equation}
+By Assumption \ref{ass:LLN/CLT}, $\hat J_n(\psi_0)\toP -A$, so $\|\hat J_n(\psi_0)^{-1}\|=O_P(1)$.
+Also, \eqref{eq:Un-limit-new} implies $\|\hat U_n(\psi_0)\|=O_P(n^{-1/2})$.
+After taking norms in \eqref{eq:solve} and using \eqref{eq:Rn-bound} to bound the remainder, we obtain for some random constants $C_{1n},C_{2n}$,
+\begin{equation}
+\|\hat\psi-\psi_0\|\le C_{1n}\,n^{-1/2}+C_{2n}\,\|\hat\psi-\psi_0\|^2.\label{eq:quadratic}
+\end{equation}
+Now we will show that $\|\hat\psi-\psi_0\|=O_P(n^{-1/2})$. Since $C_{2n}=O_P(1)$, we can choose a fixed constant $\bar C_2<\infty$ such that
+\begin{equation}
+\Pp(C_{2n}\le \bar C_2)\to 1.
+\label{eq:C2bar}
+\end{equation}
+Because $\|\hat\psi-\psi_0\|=o_P(1)$, for this same constant $\bar C_2$ we also have
+\begin{equation}
+\Pp\big(\|\hat\psi-\psi_0\|\le (2\bar C_2)^{-1}\big)\to 1.
+\label{eq:smallball}
+\end{equation}
+On the intersection of these two high-probability events,
+the inequality \eqref{eq:quadratic}
+implies $C_{2n}\|\hat\psi-\psi_0\|^2\le \frac12\|\hat\psi-\psi_0\|$, hence
+\[
+\|\hat\psi-\psi_0\|\le 2C_{1n}n^{-1/2},
+\]
+which proves that $\|\hat\psi-\psi_0\|=O_P(n^{-1/2})$.
+
+Now since $\|\hat\psi-\psi_0\|=O_P(n^{-1/2})$, the remainder bound \eqref{eq:Rn-bound} implies
+$\sqrt{n}\,R_n=O_P(\sqrt{n}\cdot n^{-1})=o_P(1)$.
+After multiplying \eqref{eq:solve} by $\sqrt{n}$ we get
+\[
+\sqrt{n}(\hat\psi-\psi_0)=-\hat J_n(\psi_0)^{-1}\sqrt{n}\,\hat U_n(\psi_0)+o_P(1).
+\]
+By Slutsky's theorem applied to \eqref{eq:Un-limit-new} and $\hat J_n(\psi_0)^{-1}\toP -A^{-1}$, we finally get
+\[
+\sqrt{n}(\hat\psi-\psi_0)\tod N(-A^{-1}b,\,A^{-1}CA^{-1}),
+\]
+which is \eqref{eq:twostep-limit}.
+\end{proof}
+\begin{remark}\label{rem:poisson}
+    Note that we used Lipschitzness of a function $\dot\mu$ only in the Step 3 for bounding Taylor remainder, so we can weaken this assumption for some special cases. For example in the Poisson regression, where $\mu(\eta) = e^\eta$, the sufficient condition instead of it is
+    \[ \E \left[\sup_{\psi\in \mathcal N} e^{\psi^\top \hat\xi_i}\|\hat\xi_i\|^3 \right]<\infty \]
+    for some neighborhood $\mathcal N$ of $\psi_0$. Indeed, from Taylor expansion we get
+    \[ e^{\hat\psi^\top \hat\xi_i}-e^{\psi_0^\top \hat\xi_i}-(\hat\psi-\psi_0)^\top\hat\xi_ie^{\psi_0^\top\hat\xi_i} = \frac{1}{2}e^{c_i}\big((\hat\psi-\psi_0)^\top\hat\xi_i\big)^2\]
+    for some $c_i$ lying between $\hat\psi^\top\xi_i$ and $\psi_0^\top\xi_i$. Thus adding over $i$ and dividing by $n$ gives
+    \[ \|R_n\| \leq \frac{1}{2n}\sum_{i=1}^ne^{c_i}\|\hat\xi_i\|^3 \|\hat\psi - \psi_0\|^2 = O_P(\| \hat\psi-\psi_0 \|^2). \]
+    The rest of the proof need not change.
+\end{remark}
+
+\subsection{BCA/BCM: consistency and asymptotic unbiasedness}
+Theorem \ref{thm:twostep} shows exact form of bias of the naive two-step estimator in the drifting regime. This formula allows to correct this bias by shifting the estimator to be zero-centered.
+
+\begin{theorem}\label{thm:bca-bcm}
+Assume Theorem~\ref{thm:twostep}. Suppose $\hat A\toP A$, $\hat\kappa\toP\kappa$, and $\hat\Omega_w\toP\Omega_w$.
+Define the additive bias correction estimator
+\[
+\hat b:=\hat\kappa\begin{bmatrix}\hat\Omega_w\hat\gamma \\0\end{bmatrix},\qquad
+\hat\psi_{\mathrm{bca}}:=\hat\psi+\frac{1}{\sqrt{n}}\hat A^{-1}\hat b
+\]
+and the multiplicative bias correction estimator by
+\[
+\hat\Gamma:=\hat\kappa \hat A^{-1}\begin{bmatrix} \hat\Omega_w & 0 \\ 0 & 0 \end{bmatrix} ,\qquad
+\hat\psi_{\mathrm{bcm}}:=(I_p-\tfrac{1}{\sqrt{n}}\hat\Gamma)^{-1}\hat\psi.
+\]
+Then
+\[
+\sqrt{n}(\hat\psi_{\mathrm{bca}}-\psi_0)\tod N(0,A^{-1}CA^{-1}),\qquad
+\sqrt{n}(\hat\psi_{\mathrm{bcm}}-\psi_0)\tod N(0,A^{-1}CA^{-1}),
+\]
+so both estimators are consistent and asymptotically unbiased.
+\end{theorem}
+
+\begin{proof}
+Theorem~\ref{thm:twostep} implies the stochastic expansion
+\begin{equation}
+\sqrt{n}(\hat\psi-\psi_0)= -A^{-1}b + Z + o_P(1),
+\qquad Z\sim N(0,A^{-1}CA^{-1}).
+\label{eq:twostep-expansion}
+\end{equation}
+
+By definition of the BCA estimator,
+\[
+\sqrt{n}(\hat\psi_{\mathrm{bca}}-\psi_0)=\sqrt n (\hat\psi_{\mathrm{bca}}-\hat\psi) + \sqrt n (\hat \psi - \psi_0) = \hat A^{-1}\hat b + \sqrt{n}(\hat\psi-\psi_0).
+\]
+After combining the probability limit $\hat A^{-1}\hat b\toP A^{-1}b$ with the equation \eqref{eq:twostep-expansion} we get
+\[
+\sqrt{n}(\hat\psi_{\mathrm{bca}}-\psi_0) = A^{-1}b + (-A^{-1}b+Z)+o_P(1)=Z+o_P(1),
+\]
+which finishes the proof for BCA after applying Slutsky's theorem..
+
+For proof for BCM write $G_n:=\hat\Gamma/\sqrt{n}$. Since $\hat\Gamma=O_P(1)$, we have $\|G_n\|=O_P(n^{-1/2})$, and the Neumann series expansion yields
+\begin{equation}
+(I_p-G_n)^{-1}=I_p+G_n+o_P(n^{-1/2}).
+\label{eq:neumann}
+\end{equation}
+After multiplying \eqref{eq:neumann} by $\hat\psi$ we get
+\[
+\hat\psi_{\mathrm{bcm}}=(I_p+G_n+o_P(n^{-1/2}))\hat\psi
+=\hat\psi+G_n\hat\psi+o_P(n^{-1/2}).
+\]
+Now notice that
+\[ \sqrt n (\hat\psi_{\mathrm{bcm}} - \hat \psi) = \sqrt n (G_n\hat\psi + o_P(n^{-1/2})) = \hat\Gamma \hat\psi +o_P(1) = \hat A^{-1} \cdot \hat\kappa \begin{bmatrix} \hat\Omega_w & 0 \\ 0 & 0 \end{bmatrix} \begin{bmatrix} \hat\gamma \\ \hat\alpha\end{bmatrix} +o_P(1) = \hat A^{-1} \hat b +o_P(1) \]
+so arguing as for $\hat\psi_{\mathrm{bca}}$
+\[ \sqrt n (\hat\psi_{\mathrm{bcm}} - \psi_0) = \sqrt n (\hat\psi_{\mathrm{bcm}}-\hat\psi ) + \sqrt n (\hat\psi - \psi_0) = A^{-1}b + Z - A^{-1}b +o_P(1) \tod N(0, A^{-1}CA^{-1}). \]
+\end{proof}
+
+\section{Binary misclassification}
+\subsection{Binary misclassification BCA and BCM estimators in the drifting regime}
+For binary misclassification problem, Assumption \ref{ass:remainder}. may be violated, even if misclassifications are rare. Thus to proceed we need to derive new formulas for the BCA and BCM estimators correcting the mean shift.
+
+Firstly define the per-observation Fisher-information-type matrix
+\begin{equation}
+I(\psi):=\E\big[\dot\mu(\tilde\eta_i(\psi))\,\hat\xi_i\hat\xi_i^\top\big],\qquad \hat I(\psi):=\frac{1}{n}\sum_{i=1}^n \dot\mu(\tilde\eta_i(\psi))\,\hat\xi_i\hat\xi_i^\top
+\label{eq:I}
+\end{equation}
+and let $m(\psi):=\E[m_i(\psi)]$ and $\hat m(\psi):=n^{-1}\sum_i m_i(\psi)$. Finally define
+$M(\psi):=\partial m(\psi)/\partial\psi^\top$ and $\hat M(\psi):=\partial\hat m(\psi)/\partial\psi^\top$.
+
+\begin{definition}[BCA/BCM estimators for binary misclassification]
+The additive bias correction estimator is
+\begin{equation}
+\hat\psi_{\mathrm{bca}}^{\mathrm{(bin)}}:=\hat\psi-\hat I(\hat\psi)^{-1}\hat m(\hat\psi).
+\label{eq:bca-bin}
+\end{equation}
+The multiplicative bias correction estimator is
+\begin{equation}
+\hat\psi_{\mathrm{bcm}}^{\mathrm{(bin)}}:=\hat\psi-\big(\hat I(\hat\psi)+\hat M(\hat\psi)\big)^{-1}\hat m(\hat\psi).
+\label{eq:bcm-bin}
+\end{equation}
+\end{definition}
+
+\begin{proposition}\label{prop:score-drift}
+In the binary-misclassification setup, define the na\"ive score
+\[\hat U_n(\psi)=\frac{1}{n}\sum_{i=1}^n \hat\xi_i\{Y_i-\mu(\tilde\eta_i(\psi))\}.\]
+Then under Assumption \ref{ass:indep}
+\[\E[\hat U_n(\psi_0)]=\E[m_i(\psi_0)],\]
+where $m_i(\psi)$ is defined in \eqref{eq:mi}. Equivalently, its components satisfy
+\[\E[\hat U_{n,\gamma}(\psi_0)]=-c_1\,\E[\delta_i(\psi_0)],\qquad \E[\hat U_{n,\alpha}(\psi_0)]=-c_2\,\E[\delta_i(\psi_0)x_i].\]
+\end{proposition}
+
+\begin{proof}
+For simplicity denote $\mu_i^*:=\mu(\eta_i^*)$ and $\tilde\mu_i(\psi):=\mu(\tilde\eta_i(\psi))$. Then
+\[
+\E[\hat U_n(\psi_0)]=\E\big[\hat\xi_i\{Y_i-\tilde\mu_i(\psi_0)\}\big]=\E\big[\hat\xi_i\{\mu_i^*-\tilde\mu_i(\psi_0)\}\big],
+\]
+since from the outcome model $ \E[Y_i\mid\hat Z_i, Z_i,x_i]= \E[Y_i\mid Z_i,x_i]=\mu_i^*$.
+
+We can begin by computing the gamma component. Since $\hat U_{n,\gamma}(\psi)=\frac{1}{n}\sum_i\hat Z_i\{Y_i-\tilde\mu_i(\psi)\}$, then
+\[
+\E[\hat U_{n,\gamma}(\psi_0)]=\E\big[\hat Z_i\{\mu_i^*-\tilde\mu_i(\psi_0)\}\big].
+\]
+Note that if $Z_i=0$, then $\mu_i^*=\mu(\alpha_0^\top x_i)$ and with probability $p_{01}$ $\hat Z_i=1$. Then $\tilde\mu_i(\psi_0)=\mu(\gamma_0+\alpha_0^\top x_i)$, so the conditional expectation on $(Z_i=0, x_i)$ equals
+\[p_{01}\{\mu(\alpha_0^\top x_i)-\mu(\gamma_0+\alpha_0^\top x_i)\}=-p_{01}\,\delta_i(\psi_0).\]
+If $Z_i=1$, then whenever $\hat Z_i=0$ or $\hat Z_i=1$ the value of $\hat Z_i \{\mu_i^*-\tilde\mu_i(\psi_0)\}$ is $0$. Thus the expectation of the gamma component is
+\[\E[\hat U_{n,\gamma}(\psi_0)]=-(1-\pi)p_{01}\E[\delta_i(\psi_0)]=-c_1\E[\delta_i(\psi_0)].\]
+
+Computing the alpha component is similar. Here $\hat U_{n,\alpha}(\psi)=\frac{1}{n}\sum_ix_i\{Y_i-\tilde\mu_i(\psi)\}$, so
+\[\E[\hat U_{n,\alpha}(\psi_0)]=\E\big[x_i\{\mu_i^*-\tilde\mu_i(\psi_0)\}\big]\]
+and if $Z_i=0$, then conditional expectation on $x_i$ is $-p_{01}\,\delta_i(\psi_0)x_i$ and if $Z_i=1$, then it is equal to $p_{10}\,\delta_i(\psi_0)x_i$. Therefore
+\[
+\E[\hat U_{n,\alpha}(\psi_0)]=-(1-\pi)p_{01}\E[\delta_i(\psi_0)x_i]+\pi p_{10}\E[\delta_i(\psi_0)x_i]=-c_2\E[\delta_i(\psi_0)x_i].
+\]
+Stacking these two components yields $\E[\hat U_n(\psi_0)]=\E[m_i(\psi_0)]$.
+\end{proof}
+
+% \begin{proposition}[BCM is a Newton step toward the CS root]\label{prop:newton_step}
+% Let $F_n(\psi):=n^{-1}\sum_i\phi_i(\psi)=\hat U_n(\psi)-\hat m(\psi)$. Then the Newton update
+% \[\psi^{(t+1)}=\psi^{(t)}-\Big(\tfrac{\partial F_n(\psi^{(t)})}{\partial\psi^\top}\Big)^{-1}F_n(\psi^{(t)})\]
+% started at $\psi^{(0)}=\hat\psi$ yields $\psi^{(1)}=\hat\psi_{\mathrm{bcm}}^{\mathrm{(bin)}}$.
+% \end{proposition}
+
+% \begin{proof}
+% By definition, $F_n(\hat\psi)=\hat U_n(\hat\psi)-\hat m(\hat\psi)=-\hat m(\hat\psi)$ because $\hat U_n(\hat\psi)=0$.
+% Also,
+% \[\frac{\partial\hat U_n(\psi)}{\partial\psi^\top}=-\hat I(\psi),\qquad \frac{\partial\hat m(\psi)}{\partial\psi^\top}=\hat M(\psi),\]
+% so $\partial F_n(\psi)/\partial\psi^\top=-(\hat I(\psi)+\hat M(\psi))$. Therefore
+% \[\psi^{(1)}=\hat\psi-(\hat I(\hat\psi)+\hat M(\hat\psi))^{-1}\hat m(\hat\psi)=\hat\psi_{\mathrm{bcm}}^{\mathrm{(bin)}}.\]
+% \end{proof}
+
+\begin{theorem}\label{thm:mis-bc}
+Assume the binary misclassification model assumptions, nondifferential misclassification, and that $(p_{01},p_{10})$ are in a drifting regime,
+i.e.\ $p_{01}=O(n^{-1/2})$ and $p_{10}=O(n^{-1/2})$, with the moment and smoothness conditions from Assumptions \ref{ass:moments}-\ref{ass:ULLN} (guaranteeing consistency of $\hat\psi$). Suppose furthermore that
+$\hat I(\hat\psi)\toP A$ and $\sqrt{n}\,\hat m(\hat\psi)\toP \sqrt{n}\,m(\psi_0)$.
+Then
+\[
+\sqrt{n}\big(\hat\psi^{\mathrm{mis}}_{\mathrm{bca}}-\psi_0\big)\tod N(0,A^{-1}CA^{-1}),
+\qquad
+\sqrt{n}\big(\hat\psi^{\mathrm{mis}}_{\mathrm{bcm}}-\psi_0\big)\tod N(0,A^{-1}CA^{-1}),
+\]
+so both estimators are consistent and asymptotically unbiased.
+\end{theorem}
+
+\begin{proof}
+Let $\Delta_i = \hat\xi_i\big( \mu(\psi_0^\top\xi_i) - \mu(\psi_0^\top \hat\xi_i)\big)$. From Proposition we have \ref{prop:score-drift} $\E \Delta_i = m(\psi_0).$ If $Z_i=\hat Z_i$, then $\Delta_i = 0$ and in the case of misclassification $\|\Delta_i \|^2 \leq (1+\|x_i\|^2)\delta_i(\psi_0)^2.$ Thus
+\[\begin{split}
+\E \| \Delta_i \|^2 &= \sum_{k=0}^1 P(Z=k) \E \left[(1+\|x_i\|^2)(\mu(\tilde\eta_i(\psi_0)) - \mu(\eta^*_i(\psi_0)))^2\big| Z=k\right] \\
+&=\sum_{k=0}^1P(Z=k)\E \left[ \mathbbm 1\{\hat Z\neq k \} (1+\|x_i\|^2)\delta_i(\psi_0)^2 \big| Z=k \right] \\
+&=\sum_{k=0}^1P(Z=k)\E \left[ \E \left(\mathbbm 1\{\hat Z\neq k \} (1+\|x_i\|^2)\delta_i(\psi_0)^2\big| Z=k, x_i \right) \big| Z=k \right] \\
+&=\sum_{k=0}^1P(Z=k)\E \left[ (1+\|x_i\|^2)\delta_i(\psi_0)^2 \E \left(\mathbbm 1\{\hat Z\neq k \}\big| Z=k, x_i \right) \big| Z=k \right] \\
+&=\sum_{k=0}^1P(Z=k)p_{k(1-k)}\E \left[(1+\|x_i\|^2)\delta_i(\psi_0)^2 \big| Z=k \right]
+\end{split}\]
+and since these expectations are finite and $p_{01}, p_{10}$ are $O_P(n^{-1/2})$, thus $\E \|\Delta_i \|^2 = O(n^{-1/2})$. But by independence
+\[ \E \left\| \frac{1}{\sqrt n} \sum_{i=1}^n(\Delta_i - \E \Delta_i) \right\|^2 = \frac{1}{n} \sum_{i=1}^n\E \left\|\Delta_i - \E \Delta_i \right\|^2 \leq \frac{1}{n} \sum_{i=1}^n\E \left\|\Delta_i \right\|^2 = \E \|\Delta_i \|^2 = o(1) \]
+so it tends to 0 in $L^2$, hence also in probability.
+
+Now we can decompose $\hat U_n(\psi_0)$ as
+\[ \sqrt n \hat U_n(\psi_0) = \frac{1}{\sqrt n} \sum_{i=1}^n\hat\xi_i \varepsilon_i + \frac{1}{\sqrt n } \sum_{i=1}^n\hat\xi_i(\mu (\psi_0^\top \xi_i) - \mu(\psi_0^\top \hat\xi_i)) = \frac{1}{\sqrt n} \sum_{i=1}^n\hat\xi_i \varepsilon_i + \sqrt{n}\,m(\psi_0) + o_P(1) \]
+
+Thus linearizing $\hat U_n(\hat\psi)=0$ around $\psi_0$ yields
+\[ 0=\hat U_n(\psi_0) + \bar J_n(\hat\psi - \psi_0) \]
+where
+\[\bar J_n = \int_0^1\hat J_n\big(\psi_0 + t(\hat\psi - \psi_0)\big)dt \]
+is the integral remainder in the Taylor expansion. Notice that
+\[\begin{split}
+\| \bar J_n-\hat J_n(\psi_0)\| &\leq \int_0^1 \| \hat J_n(\psi_0 +t(\hat\psi - \psi_0)) - \hat J_n(\psi_0) \|dt \\
+&= \int_0^1 \left\| \frac{1}{n}\sum_{i=1}^n \big(\dot\mu(\psi_0^\top\hat\xi_i +t(\hat\psi - \psi_0)^\top\hat\xi_i) - \dot\mu(\psi_0^\top \hat\xi_i) \big)\hat\xi_i\hat\xi_i^\top \right\|dt \\
+&\leq \int_0^1 \frac{1}{n}\sum_{i=1}^n L\, t\|\hat\psi-\psi_0 \|\, \|\hat\xi_i \|^3dt = \frac{L}{2}\|\hat\psi-\psi_0\| \, \frac{1}{n}\sum_{i=1}^n\|\hat\xi_i\|^3
+\end{split}\]
+and since $\hat J_n(\psi_0)\toP -A$ from Assumption \ref{ass:LLN/CLT}, $\|\hat\psi -\psi_0\|\toP 0$ from consistency, and $\frac{1}{n}\sum \|\hat\xi_i\|^3=O_P(1)$ from assumption of finite moments, then $\bar J_n \toP -A.$ After rearranging we get
+\[
+\sqrt{n}(\hat\psi-\psi_0)=A^{-1}\Big\{\frac{1}{\sqrt{n}}\sum_{i=1}^n \hat\xi_i\varepsilon_i\Big\}
+\;+\;A^{-1}\sqrt{n}\,m(\psi_0)\;+\;o_P(1),
+\]
+so the mean shift is $A^{-1}\sqrt{n}\,m(\psi_0)$ and the first term is centered by the CLT.
+
+Now it is easy to see that the BCA estimator cancels the mean shift. We have
+\[
+\sqrt{n}\big(\hat\psi^{\mathrm{mis}}_{\mathrm{bca}}-\psi_0\big)
+=\sqrt{n}(\hat\psi-\psi_0)-\hat I(\hat\psi)^{-1}\sqrt{n}\,\hat m(\hat\psi)
+\]
+where by assumptions $\hat I(\hat\psi)^{-1}\toP A^{-1}$ and $\sqrt{n}\,\hat m(\hat\psi)\toP \sqrt{n}\,m(\psi_0)$, so the second term equals
+$A^{-1}\sqrt{n}\,m(\psi_0)+o_P(1)$, canceling the mean shift.
+Therefore the limit distribution is centered normal with variance $A^{-1}CA^{-1}$.
+
+Now for the BCM estimator it is sufficient to show, that it shares BCA's $\sqrt n$-limit. To do this we use a matrix identity
+\[ \hat I(\hat\psi)^{-1} - (\hat I(\hat\psi)+\hat M(\hat\psi))^{-1} = \hat I (\hat\psi)^{-1}\hat M(\hat\psi) (\hat I(\hat\psi) + \hat M(\hat\psi))^{-1} \]
+to get
+\[ \hat\psi^{\mathrm{mis}}_{\mathrm{bca}} - \hat\psi^{\mathrm{mis}}_{\mathrm{bcm}} = \hat I (\hat\psi)^{-1}\hat M(\hat\psi) (\hat I(\hat\psi) + \hat M(\hat\psi))^{-1} \hat m (\hat\psi) \]
+and since both $\hat M(\hat\psi)$ (because $m({\psi})$ is linear in $p_{01}, p_{10}$) and $\ \hat m (\hat\psi)$ are $O_P(n^{-1/2})$ and both $\hat I (\hat\psi)^{-1}$ and $\ (\hat I(\hat\psi) + \hat M(\hat\psi))^{-1}$ are $O_P(1)$, thus
+\[ \hat\psi^{\mathrm{mis}}_{\mathrm{bca}} - \hat\psi^{\mathrm{mis}}_{\mathrm{bcm}} = o_P(n^{-1/2}). \]
+\end{proof}
+
+\begin{remark}
+    Note that in this theorem the Lipschitzness of $\dot\mu$ also can be changed for Poisson regression in the same way as in Remark \ref{rem:poisson}. A Taylor expansion of an exponential function yields
+    \[ e^x - 1 = xe^c \]
+    for some $c$ between 0 and $x$. Thus
+    \[\begin{split}
+    \| \bar J_n-\hat J_n(\psi_0)\| & = \int_0^1 \left\| \frac{1}{n}\sum_{i=1}^n e^{\psi_0^\top \hat\xi_i} (e^{t(\hat\psi - \psi_0)^\top\hat\xi_i}-1) \hat\xi_i\hat\xi_i^\top \right\|dt = \int_0^1 \left\| \frac{1}{n}\sum_{i=1}^n e^{\psi_0^\top \hat\xi_i} t(\hat\psi - \psi_0)^\top\hat\xi_i e ^{c_i} \hat\xi_i\hat\xi_i^\top \right\|dt \\
+    &\leq \int_0^1 t \frac{1}{n}\sum_{i=1}^n e^{c_i}\, e^{\psi_0^\top\hat\xi_i}\|\hat\xi_i\|^3 \|\hat\psi-\psi_0 \| dt = \frac{1}{2} \|\hat\psi - \psi_0\|\, \frac{1}{n}\sum_{i=1}^ne^{c_i+\psi_0^\top \hat\xi_i}\|\hat\xi_i\|^3
+    \end{split} \]
+    and, using the same assumption as in the Remark \ref{rem:poisson}, we conclude that $\frac{1}{n}\sum e^{c_i+\psi_0^\top \hat\xi_i}\|\hat\xi_i\|^3 = O_P(1)$, so $\|\bar J - \hat J_n (\psi_0)\| \toP 0.$
+\end{remark}
+
+\subsection{Corrected-score estimator: unbiased estimating equation and consistency}
+
+The BCA/BCM formulas \eqref{eq:bca-bin}--\eqref{eq:bcm-bin} are only guaranteed to deliver
+consistency and asympthotic unbiasedness when misclassification is in the drifting regime. Under fixed
+misclassification probabilities, they should be viewed only as approximations. In this case it is needed to derive an estimator that corrects the mean shift more accurately. This can be done by solving shifted estimating equation.
+
+\begin{proposition}\label{prop:cs-unbiased}
+Under the assumptions from Proposition \ref{prop:score-drift}, $\E[\phi_i(\psi_0)]=0$.
+\end{proposition}
+
+\begin{proof}
+We have
+\[\E[\phi_i(\psi_0)]=\E\big[\hat\xi_i\{Y_i-\mu(\tilde\eta_i(\psi_0))\}\big]-\E[m_i(\psi_0)].\]
+The first term equals $\E[\hat U_n(\psi_0)]$, so by Proposition~\ref{prop:score-drift} we get $\E[\phi_i(\psi_0)]=0$.
+\end{proof}
+
+\begin{theorem}\label{thm:cs}
+Under the independence of $Z_i$ and $x_i$ and regularity conditions given by Assumptions  \ref{ass:est_proba} and \ref{ass:regularity}, any solution $\hat\psi_{\mathrm{cs}}\in \Psi$ of \eqref{eq:cs} is consistent: $\hat\psi_{\mathrm{cs}}\toP\psi_0$. Moreover,
+\[
+\sqrt{n}(\hat\psi_{\mathrm{cs}}-\psi_0)\tod N\big(0,\,J^{-1}S(J^{-1})^\top\big),\qquad S:=\E[\phi_i(\psi_0)\phi_i(\psi_0)^\top].
+\]
+\end{theorem}
+
+\begin{proof}
+We begin by proving consistency of $\hat\psi_{cs}$ and it can be done analogically as in proof of Theorem \ref{thm:twostep}. By Proposition~\ref{prop:cs-unbiased} holds $\Phi(\psi_0)=\E[\phi_i(\psi_0)]=0$. Since $\Phi$ has a unique root at $\psi_0$, for any $\varepsilon>0$ there exists $\delta>0$ such that $\inf_{\norm{\psi-\psi_0}\ge\varepsilon}\norm{\Phi(\psi)}\ge\delta$. From the uniform law of large numbers the event $\sup_{\psi\in\Psi}\norm{\Phi_n(\psi)-\Phi(\psi)}<\delta/2$ tends tends to a probability one event, so any root of $\Phi_n$ must lie within $\varepsilon$ of $\psi_0$.
+Thus $\hat\psi_{\mathrm{cs}}\toP\psi_0$, so the corrected-score estimator is consistent.
+
+Now we can use a Taylor expansion with integral remainder for $\Phi_n$ around $\psi_0$ to get
+\[0=\Phi_n(\psi_0)+\bar J_n(\hat\psi_{\mathrm{cs}}-\psi_0),\]
+where $\bar J_n :=\int_0^1\hat J_n (\psi_0 +t(\hat\psi_{\mathrm{cs}}-\psi_0))dt$.
+Under the assumptions, $\bar J_n\toP J$ where $J$ is nonsingular.
+From the multivariate CLT we get
+\[\sqrt{n}\,\Phi_n(\psi_0)=\frac{1}{\sqrt{n}}\sum_{i=1}^n\phi_i(\psi_0)\tod N(0,S).\]
+Therefore
+\[\sqrt{n}(\hat\psi_{\mathrm{cs}}-\psi_0)= -\bar J_n^{-1}\sqrt{n}\,\Phi_n(\psi_0)\tod N(0,J^{-1}S(J^{-1})^\top),\]
+which finishes the proof.
+\end{proof}
+
+\begin{remark}\label{rem:probas}
+    Assumption \ref{ass:est_proba} is very strong and usually impossible in practice. However, it is necessary to prove unbiasedness of finite-sample corrected-score estimator. A proposition below states sufficient conditions for this theorem to hold with estimated probabilities.
+\end{remark}
+\begin{proposition}\label{prop:est_prob}
+    Let $\Phi_n^\circ$ be the score function using true values of the probabilities and $\Phi_n^*$ using the estimated ones. Assume the conditions for Theorem \ref{thm:cs} for the oracle estimator. If the plug-in Jacobian satisfies the same local-uniform convergence as the oracle Jacobian with a nonsingular probability limit and 
+    \[  \sup_{\psi\in \Psi} \| \Phi_n^*(\psi)-\Phi_n^\circ(\psi) \| = o_P(1), \]
+    then any root $\hat\psi^*$ of the plug-in equation is consistent. If moreover
+    \[  \sup_{\psi\in \Psi} \| \Phi_n^*(\psi)-\Phi_n^\circ(\psi) \| = o_P(n^{-1/2}), \]
+    then it is also asymptotically unbiased.
+\end{proposition}
+\begin{proof}
+    We have
+    \[ \sup_{\psi \in\Psi} \| \Phi_n^*(\psi) - \Phi(\psi) \| \leq \sup_{\psi \in\Psi} \| \Phi_n^*(\psi) - \Phi_n^\circ(\psi) \| + \sup_{\psi \in\Psi} \| \Phi_n^\circ(\psi) - \Phi(\psi) \| = o_P(1)  \]
+    so arguing as in the step 1 of Theorem \ref{thm:cs} we get consistency of $\hat\psi^*.$
+    
+    From the integral remainder Taylor expansion
+    \[ 0=\Phi_n^*(\hat\psi^*) = \Phi_n^*(\hat\psi^\circ)+\bar J_n^* (\hat\psi^*-\hat\psi^\circ) \]
+    so
+    \[ \hat\psi^*-\hat\psi^\circ = - (\bar J_n^*)^{-1}\Phi_n^*(\hat\psi^\circ) = -(\bar J_n^*)^{-1}\big(\Phi_n^*(\hat\psi^\circ) - \Phi_n^\circ(\hat\psi^\circ)\big) \]
+    and if $\| \Phi_n^*(\psi)-\Phi_n^\circ(\psi) \|=o_P(n^{-1/2})$, then we get $\| \hat\psi^* - \hat\psi^\circ \| = o_P(n^{-1/2})$ since $(\bar J_n^*)^{-1}=O_P(1)$.
+\end{proof}
+
+% \section{When each method is valid (summary)}
+% \begin{itemize}[leftmargin=1.5em]
+% \item \textbf{BCA/BCM:} require a drifting-sequence regime so the bias is of order $n^{-1/2}$ (Theorems~\ref{thm:twostep} and \ref{thm:bca-bcm}).
+% \item \textbf{Corrected score:} remains consistent under fixed misclassification because the estimating equation is unbiased by construction (Theorem~\ref{thm:cs}).
+% \item \textbf{Binary misclassification:} yields explicit drift expressions and operational BCA/BCM/CS formulas (Proposition~\ref{prop:score-drift} and Theorem~\ref{thm:mis-bc}).
+% \end{itemize}
+
+\section{Simulation Study}
+A simulation study was done in various scenarios to present efficiency of the BCA, BCM and CS estimators  as compared to the naive one.
+
+In the two first scenarios, there were 10000 observations with $\pi = 0.4, p_{01}=0.1, p_{10} = 0.15,$ and $q_i\sim N(0, 1)$. Probabilities of misclassification were unknown and estimated using a subsample containing 1000 observations with known both true and estimated value od $\theta_i$. In the first one there was considered a Poisson regression and in the scenario II there was a logistic regression.
+
+In scenario III there were 20000 observations with $K=4$ possible values for $\theta$ with probabilities $0.5, 0.25, 0.15, 0.1$ and probability of misclassification equal to $0.2$ distributed equally into all three other cases. Again the variable $q_i$ had a standard normal distributed and the misclassification probability was estimated from a validation sample of size equal to $0.1$ of the initial sample.
+
+Each of the simulations was repeated 100 times. The tables below report empirical bias, empirical standard deviation, and mean squared error.
+\begin{table}[ht]
+\centering
+\caption{Scenario I}
+\begin{tabular}{l c r r r}
+\hline
+\hline
+Estimator & Parameter & \multicolumn{1}{c}{Bias} & \multicolumn{1}{c}{Sd.} & \multicolumn{1}{c}{MSE} \\
+\hline
+\textbf{Naive} & $\gamma$ (0.8)   & $-0.1983$ & $0.0217$ & $0.0398$ \\
+               & $\alpha_0$ (-0.5) & $0.1140$  & $0.0169$ & $0.0133$ \\
+               & $\alpha_1$ (0.7)  & $-0.0010$ & $0.0092$ & $0.0001$ \\
+\hline
+\textbf{BCA}   & $\gamma$ (0.8)   & $-0.0496$ & $0.0276$ & $0.0032$ \\
+               & $\alpha_0$ (-0.5) & $0.0310$  & $0.0220$ & $0.0014$ \\
+               & $\alpha_1$ (0.7)  & $-0.0009$ & $0.0092$ & $0.0001$ \\
+\hline
+\textbf{BCM}   & $\gamma$ (0.8)   & $-0.0004$ & $0.0324$ & $0.0010$ \\
+               & $\alpha_0$ (-0.5) & $0.0037$  & $0.0247$ & $0.0006$ \\
+               & $\alpha_1$ (0.7)  & $-0.0009$ & $0.0093$ & $0.0001$ \\
+\hline
+\textbf{CS}    & $\gamma$ (0.8)   & $0.0026$  & $0.0331$ & $0.0011$ \\
+               & $\alpha_0$ (-0.5) & $-0.0030$ & $0.0260$ & $0.0007$ \\
+               & $\alpha_1$ (0.7)  & $-0.0009$ & $0.0093$ & $0.0001$ \\
+\hline
+\hline
+\end{tabular}
+\end{table}
+
+
+\begin{table}[ht]
+\centering
+\caption{Scenario II}
+\begin{tabular}{l c r r r}
+\hline
+\hline
+Estimator & Parameter & \multicolumn{1}{c}{Bias} & \multicolumn{1}{c}{Sd.} & \multicolumn{1}{c}{MSE} \\
+\hline
+\textbf{Naive} & $\gamma$ (0.8)   & $-0.2030$ & $0.0409$ & $0.0429$ \\
+               & $\alpha_0$ (-0.5) & $0.0829$  & $0.0278$ & $0.0076$ \\
+               & $\alpha_1$ (0.7)  & $-0.0064$ & $0.0237$ & $0.0006$ \\
+\hline
+\textbf{BCA}   & $\gamma$ (0.8)   & $-0.0499$ & $0.0522$ & $0.0052$ \\
+               & $\alpha_0$ (-0.5) & $0.0193$  & $0.0312$ & $0.0013$ \\
+               & $\alpha_1$ (0.7)  & $0.0007$  & $0.0241$ & $0.0006$ \\
+\hline
+\textbf{BCM}   & $\gamma$ (0.8)   & $0.0026$  & $0.0583$ & $0.0034$ \\
+               & $\alpha_0$ (-0.5) & $-0.0024$ & $0.0331$ & $0.0011$ \\
+               & $\alpha_1$ (0.7)  & $0.0031$  & $0.0243$ & $0.0006$ \\
+\hline
+\textbf{CS}    & $\gamma$ (0.8)   & $0.0047$  & $0.0589$ & $0.0035$ \\
+               & $\alpha_0$ (-0.5) & $-0.0035$ & $0.0334$ & $0.0011$ \\
+               & $\alpha_1$ (0.7)  & $0.0049$  & $0.0245$ & $0.0006$ \\
+\hline
+\hline
+\end{tabular}
+\end{table}
+
+
+\begin{table}[ht]
+\centering
+%\footnotesize
+\caption{Scenario III}
+\begin{tabular}{l c r r r}
+\hline
+\hline
+Estimator & Parameter & \multicolumn{1}{c}{Bias} & \multicolumn{1}{c}{Sd.} & \multicolumn{1}{c}{MSE} \\
+\hline
+\textbf{Naive} & $\gamma_1$ (1.0)  & $-0.1985$ & $0.0105$ & $0.0395$ \\
+               & $\gamma_2$ (-0.9) & $0.5794$  & $0.0234$ & $0.3362$ \\
+               & $\gamma_3$ (0.2)  & $-0.0019$ & $0.0159$ & $0.0003$ \\
+               & $\alpha_0$ (0.8)  & $0.0549$  & $0.0085$ & $0.0031$ \\
+               & $\alpha_1$ (-0.7) & $-0.0005$ & $0.0061$ & $0.0000$ \\
+\hline
+\textbf{BCA}   & $\gamma_1$ (1.0)  & $-0.0403$ & $0.0159$ & $0.0019$ \\
+               & $\gamma_2$ (-0.9) & $0.3286$  & $0.0509$ & $0.1105$ \\
+               & $\gamma_3$ (0.2)  & $0.0160$  & $0.0258$ & $0.0009$ \\
+               & $\alpha_0$ (0.8)  & $0.0099$  & $0.0112$ & $0.0002$ \\
+               & $\alpha_1$ (-0.7) & $-0.0003$ & $0.0062$ & $0.0000$ \\
+\hline
+\textbf{BCM}   & $\gamma_1$ (1.0)  & $0.0101$  & $0.0245$ & $0.0007$ \\
+               & $\gamma_2$ (-0.9) & $0.1516$  & $0.0906$ & $0.0311$ \\
+               & $\gamma_3$ (0.2)  & $-0.0012$ & $0.0487$ & $0.0024$ \\
+               & $\alpha_0$ (0.8)  & $0.0012$  & $0.0140$ & $0.0002$ \\
+               & $\alpha_1$ (-0.7) & $-0.0002$ & $0.0063$ & $0.0000$ \\
+\hline
+\textbf{CS}    & $\gamma_1$ (1.0)  & $0.0007$  & $0.0232$ & $0.0005$ \\
+               & $\gamma_2$ (-0.9) & $-0.0344$ & $0.1681$ & $0.0291$ \\
+               & $\gamma_3$ (0.2)  & $-0.0021$ & $0.0514$ & $0.0026$ \\
+               & $\alpha_0$ (0.8)  & $-0.0004$ & $0.0146$ & $0.0002$ \\
+               & $\alpha_1$ (-0.7) & $-0.0002$ & $0.0063$ & $0.0000$ \\
+\hline
+\hline
+\end{tabular}
+\end{table}
+
+The naive estimator displays the expected displacement in the coefficients attached to the misclassified covariate. BCA estimator reduces its bias significantly, when both BCM and CS estimators are almost unbiased. However, BCM and CS estimators have visibly higher variance but at the end of the day their MSE is the lowest in the binary scenarios and for almost all parameters in the multicategory one.
+
+
+\clearpage
+
+\appendix
+
+% \section{Proofs for the main text}
+% \subsection{Proof of Theorem \ref{thm:twostep}}
+
+% Reset theorem-style counters and display as A.1, A.2, ...
+\setcounter{theorem}{0}
+\setcounter{proposition}{0}
+\setcounter{lemma}{0}
+\setcounter{corollary}{0}
+\setcounter{assumption}{0}
+\setcounter{definition}{0}
+\setcounter{remark}{0}
+\renewcommand{\thetheorem}{A.\arabic{theorem}}
+\renewcommand{\theproposition}{A.\arabic{proposition}}
+\renewcommand{\thelemma}{A.\arabic{lemma}}
+\renewcommand{\thecorollary}{A.\arabic{corollary}}
+\renewcommand{\theassumption}{A.\arabic{assumption}}
+\renewcommand{\thedefinition}{A.\arabic{definition}}
+\renewcommand{\theremark}{A.\arabic{remark}}
+\renewcommand{\theHtheorem}{A.\arabic{theorem}}
+\renewcommand{\theHproposition}{A.\arabic{proposition}}
+\renewcommand{\theHlemma}{A.\arabic{lemma}}
+\renewcommand{\theHcorollary}{A.\arabic{corollary}}
+\renewcommand{\theHassumption}{A.\arabic{assumption}}
+\renewcommand{\theHdefinition}{A.\arabic{definition}}
+\renewcommand{\theHremark}{A.\arabic{remark}}
+
+
+\section{Multicategory misclassification: categorical latent regressor with $K$ classes}\label{app:multiclass}
+
+This appendix generalizes the binary misclassification results in the main text to a categorical latent regressor taking values in $\{0,1,\dots,K-1\}$ with $K\ge 2$. It supplies explicit BCA, BCM, and corrected-score formulas, and
+proves their unbiasedness and consistency
+
+\subsection{Setup and notation}
+
+Let $Z_i\in\{0,1,\dots,K-1\}$ be a latent category label and let $\hat Z_i\in\{0,1,\dots,K-1\}$ be its
+ proxy. Let $x_i\in\mathbb R^r$ be a vector of observed covariates. We use a dummy-variable representation with baseline
+category $0$:
+\[
+d_i := d(Z_i):=\big(\mathbbm 1\{Z_i=1\},\dots,\mathbbm 1\{Z_i=K-1\}\big)^\top\in\mathbb R^{K-1},
+\qquad
+\hat d_i := d(\hat Z_i).
+\]
+The true and observed regressors are
+\[ \xi_i = \begin{pmatrix} d_i \\ x_i \end{pmatrix}, \qquad \hat\xi_i = \begin{pmatrix}
+    \hat d_i \\ x_i
+\end{pmatrix} \]
+and the regression parameter is
+\[
+\psi:=\begin{pmatrix}\gamma\\ \alpha\end{pmatrix}\in\mathbb R^{(K-1)+r},
+\qquad
+\text{where } \gamma=(\gamma_1,\dots,\gamma_{K-1})^\top\in\mathbb R^{K-1},\quad \alpha\in\mathbb R^r,
+\]
+with the baseline convention $\gamma_0:=0$.
+
+For $\ell\in\{0,1,\dots,K-1\}$ define the category-specific linear predictor and mean:
+\begin{equation}
+\eta_{i,\ell}(\psi):=\alpha^\top x_i+\gamma_\ell,
+\qquad
+\mu_{i,\ell}(\psi):=\mu\big(\eta_{i,\ell}(\psi)\big),
+\label{eq:eta-multi}
+\end{equation}
+where $\mu(\cdot)$ is the inverse link function.
+The correctly specified outcome model is
+\begin{equation}
+\E[Y_i\mid Z_i=\ell,x_i]=\mu_{i,\ell}(\psi_0),\qquad \ell=0,1,\dots,K-1.
+\label{eq:glm-multi}
+\end{equation}
+
+Let $\Pi$ be the $K\times K$ misclassification matrix with entries
+\begin{equation}
+\Pi_{j\ell}:=\Pr(\hat Z_i=j\mid Z_i=\ell),\qquad \sum_{j=0}^{K-1}\Pi_{j\ell}=1\;\;\text{for each }\ell
+\label{eq:Pi}
+\end{equation}
+and let $\pi_\ell:=\Pp(Z_i=\ell)$.
+
+\begin{assumption}[Nondifferential multicategory misclassification]\label{ass:multi-nondiff}
+Misclassification is nondifferential:
+\[
+\Pr(\hat Z_i=j\mid Z_i=\ell,Y_i,x_i)=\Pr(\hat Z_i=j\mid Z_i=\ell)=\Pi_{j\ell},
+\]
+for all $j,\ell\in\{0,\dots,K-1\}$.
+\end{assumption}
+
+\begin{assumption}[Class prevalences and misclassification probabilities]\label{ass:multi-known}
+The matrix $\Pi$ and prevalences $\pi=(\pi_0,\dots,\pi_{K-1})^\top$ are known.
+\end{assumption}
+
+\begin{assumption}[Covariate independence]\label{ass:multi-indep}
+$Z_i$ is independent of $x_i$.
+\end{assumption}
+
+\begin{remark}
+Assumption~\ref{ass:multi-indep} can be weakened.
+All results below remain true if one replaces unconditional expectations $\E[\cdot]$ with conditional
+expectations $\E[\cdot\mid Z=\ell]$ (or, equivalently, replaces $\pi_\ell\E[\cdot]$ with $\E[\mathbbm 1\{Z=\ell\}\cdot]$).
+We impose $Z\perp x$ only to keep the formulas parallel to the binary case and to the original note.
+\end{remark}
+
+
+The naive multicategory score is
+\begin{equation}
+\hat U_n(\psi):=\frac{1}{n}\sum_{i=1}^n \hat\xi_i\Big\{Y_i-\mu_{i,\hat Z_i}(\psi)\Big\}
+\label{eq:Uhat-multi}
+\end{equation}
+and let $\hat\psi$ be any solution of $\hat U_n(\hat\psi)=0$.
+
+\subsection{Exact score drift at $\psi_0$ for $K$ categories}
+
+We now compute the mean drift of the na\"ive score at the true parameter $\psi_0$.
+
+\begin{proposition}[Multicategory score drift]\label{prop:multi-drift}
+Under \eqref{eq:glm-multi} and Assumptions~\ref{ass:multi-nondiff}--\ref{ass:multi-indep},
+the expectation of the naive score at $\psi_0$ is
+\[
+\E\big[\hat U_n(\psi_0)\big]=m(\psi_0),
+\]
+where $m(\psi)$ has the block decomposition $m(\psi)=(m_\gamma(\psi)^\top,m_\alpha(\psi)^\top)^\top$ with
+components
+\begin{align}
+m_{\gamma_k}(\psi)
+&=\sum_{\ell=0}^{K-1}\pi_\ell \Pi_{k\ell}\,\E\!\left[\mu_{i,\ell}(\psi)-\mu_{i,k}(\psi)\right],
+\qquad k=1,\dots,K-1, \label{eq:multi-drift-gamma}\\[4pt]
+m_{\alpha}(\psi)
+&=\sum_{\ell=0}^{K-1}\sum_{j=0}^{K-1}\pi_\ell \Pi_{j\ell}\,
+\E\!\left[\big(\mu_{i,\ell}(\psi)-\mu_{i,j}(\psi)\big)x_i\right].
+\label{eq:multi-drift-alpha}
+\end{align}
+\end{proposition}
+
+\begin{proof}
+Because the observations are i.i.d., $\E[\hat U_n(\psi_0)]=\E[\hat\xi_i\{Y_i-\mu_{i,\hat Z_i}(\psi_0)\}]$.
+We derive the two blocks separately.
+By the law of iterated expectations and (\ref{eq:glm-multi}) we have
+\begin{equation}
+\E\!\left[\hat\xi_i\{Y_i-\mu_{i,\hat Z_i}(\psi_0)\}\right]
+=
+\E\!\left[\hat\xi_i\{\mu_{i,Z_i}(\psi_0)-\mu_{i,\hat Z_i}(\psi_0)\}\right].
+\label{eq:multi-step1}
+\end{equation}
+
+Notice that from dummy representation the $\gamma_k$ component of $\hat\xi_i$ is nonzero only if $\hat Z_i = k$. Thus we can split the expected values as a sum over possible values of $Z_i$, use conditioning on $Z_i$ and use independence of $Z_i$ na $x_i$
+\[ \E [\hat U_{n, \gamma_k}(\psi_0)] = \sum_{l=0}^{K-1}\E \left[ \mathbbm 1\{ Z_i=l \}\mathbbm 1 \{\hat Z_i = k \}(\mu_{i,Z_i}(\psi_0)-\mu_{i,\hat Z_i}(\psi_0)) \right] = \sum_{l=0}^{K-1}\pi_l\Pi_{kl}\E \left[ \mu_{i,Z_i}(\psi_0)-\mu_{i,\hat Z_i}(\psi_0) \right]. \]
+
+The $\alpha$ block is analogous, except that every observed category $j$ contributes  through the common covariate $x_i$ giving (\ref{eq:multi-drift-alpha}).
+\end{proof}
+
+To derive a formula for multicategory versions of BCA, BCM and CS estimators, we need to define a per-observation version of the drift whose expectation equals $m(\psi)$.
+
+Let $m_i(\psi)=(m_{i,\gamma}(\psi)^\top,m_{i,\alpha}(\psi)^\top)^\top$ with
+\begin{align}
+m_{i,\gamma_k}(\psi)
+&:=\sum_{\ell=0}^{K-1}\pi_\ell \Pi_{k\ell}\,\Big\{\mu_{i,\ell}(\psi)-\mu_{i,k}(\psi)\Big\},
+\qquad k=1,\dots,K-1,\label{eq:mi-multi-gamma}\\[3pt]
+m_{i,\alpha}(\psi)
+&:=\sum_{\ell=0}^{K-1}\sum_{j=0}^{K-1}\pi_\ell \Pi_{j\ell}\,
+\Big\{\mu_{i,\ell}(\psi)-\mu_{i,j}(\psi)\Big\}\,x_i
+\label{eq:mi-multi-alpha}
+\end{align}
+and $\hat m(\psi):=n^{-1}\sum_{i=1}^n m_i(\psi)$.
+
+Also define the Fisher-information-type matrix for the naive score \eqref{eq:Uhat-multi}:
+\begin{equation}
+I(\psi):=\E\!\left[\dot\mu\big(\eta_{i,\hat Z_i}(\psi)\big)\,\hat\xi_i\hat\xi_i^\top\right],
+\qquad
+\hat I(\psi):=\frac{1}{n}\sum_{i=1}^n \dot\mu\big(\eta_{i,\hat Z_i}(\psi)\big)\,\hat\xi_i\hat\xi_i^\top
+\label{eq:I-multi}
+\end{equation}
+and the Jacobian of the drift,
+\[
+M(\psi):=\frac{\partial m(\psi)}{\partial\psi^\top},
+\qquad
+\hat M(\psi):=\frac{\partial \hat m(\psi)}{\partial\psi^\top}
+=\frac{1}{n}\sum_{i=1}^n\frac{\partial m_i(\psi)}{\partial\psi^\top}.
+\]
+
+\begin{definition}[Multicategory BCA and BCM]\label{def:bca-bcm-multi}
+Let $\hat\psi$ solve the na\"ive score equation $\hat U_n(\hat\psi)=0$.
+The additive bias correction (BCA) estimator is
+\begin{equation}
+\hat\psi_{\mathrm{bca}}^{(K)}:=\hat\psi-\hat I(\hat\psi)^{-1}\hat m(\hat\psi)
+\label{eq:bca-multi}
+\end{equation}
+and the multiplicative bias correction (BCM) estimator is
+\begin{equation}
+\hat\psi_{\mathrm{bcm}}^{(K)}:=\hat\psi-\big(\hat I(\hat\psi)+\hat M(\hat\psi)\big)^{-1}\hat m(\hat\psi).
+\label{eq:bcm-multi}
+\end{equation}
+\end{definition}
+
+\begin{definition}[Multicategory corrected-score estimator]\label{def:cs-multi}
+Define the corrected-score contribution
+\begin{equation}
+\phi_i(\psi):=\hat\xi_i\Big\{Y_i-\mu_{i,\hat Z_i}(\psi)\Big\}-m_i(\psi),
+\label{eq:phi-multi}
+\end{equation}
+and let $\hat\psi_{\mathrm{cs}}^{(K)}$ be any solution of
+\begin{equation}
+\Phi_n(\psi):=\frac{1}{n}\sum_{i=1}^n\phi_i(\psi)=0.
+\label{eq:cs-multi}
+\end{equation}
+\end{definition}
+
+\subsection{Unbiasedness and consistency of the multicategory corrected-score estimator}
+
+\begin{theorem}[Unbiasedness of the multicategory corrected score]\label{thm:multi-cs-unbiased}
+Under the assumptions of Proposition~\ref{prop:multi-drift},
+\[
+\E\big[\phi_i(\psi_0)\big]=0.
+\]
+\end{theorem}
+
+\begin{proof}
+By definition \eqref{eq:phi-multi},
+\[
+\E[\phi_i(\psi_0)]
+=\E\!\left[\hat\xi_i\{Y_i-\mu_{i,\hat Z_i}(\psi_0)\}\right]-\E[m_i(\psi_0)].
+\]
+By Proposition~\ref{prop:multi-drift} and Definition~\ref{def:mi-multi},
+$\E[\hat\xi_i\{Y_i-\mu_{i,\hat Z_i}(\psi_0)\}]=m(\psi_0)$ and $\E[m_i(\psi_0)]=m(\psi_0)$.
+Subtracting yields $\E[\phi_i(\psi_0)]=0$.
+\end{proof}
+
+\begin{theorem}[Consistency and asymptotic unbiasedness of $\hat\psi_{\mathrm{cs}}^{(K)}$]\label{thm:multi-cs}
+Under Theorem~\ref{thm:multi-cs-unbiased} and Z-estimation regularity conditions from Assumption~\ref{ass:regularity} (applied to $\phi_i$ defined in \ref{def:cs-multi}),
+any solution $\hat\psi_{\mathrm{cs}}^{(K)}\in \Psi$ of \eqref{eq:cs-multi} is consistent: $\hat\psi_{\mathrm{cs}}^{(K)}\toP\psi_0$.
+Moreover,
+\[
+\sqrt{n}\big(\hat\psi_{\mathrm{cs}}^{(K)}-\psi_0\big)\tod N\big(0,\,J^{-1}S(J^{-1})^\top\big).
+\]
+\end{theorem}
+
+\begin{proof}
+\textbf{Step 1 (identify the population root).}
+By Theorem~\ref{thm:multi-cs-unbiased}, $\Phi(\psi_0)=\E[\phi_i(\psi_0)]=0$.
+
+\textbf{Step 2 (consistency).}
+Fix $\varepsilon>0$. By uniqueness of the root (Assumption~\ref{ass:regularity}(ii)) and continuity (Assumption~\ref{ass:regularity}(i)),
+there exists $\delta>0$ such that
+\[
+\inf_{\norm{\psi-\psi_0}\ge\varepsilon}\norm{\Phi(\psi)}\ge\delta.
+\]
+On the event $A_n:=\{\sup_{\psi\in\Psi}\norm{\Phi_n(\psi)-\Phi(\psi)}<\delta/2\}$, any solution of $\Phi_n(\psi)=0$
+must satisfy $\norm{\psi-\psi_0}<\varepsilon$; otherwise $\norm{\Phi_n(\psi)}\ge \delta/2$.
+Since $P(A_n)\to 1$, it follows that $\hat\psi_{\mathrm{cs}}^{(K)}\toP\psi_0$.
+
+\textbf{Step 3 (asymptotic normality).}
+A Taylor expansion of $\Phi_n(\hat\psi_{\mathrm{cs}}^{(K)})=0$ around $\psi_0$ gives
+\[
+0=\Phi_n(\psi_0)+\bar J_n\big(\hat\psi_{\mathrm{cs}}^{(K)}-\psi_0\big),
+\]
+where $\bar J_n$ is the integral remainder, defined as in the proof of  Theorem \ref{thm:cs}.
+By consistency from Step~2 and Assumption~\ref{ass:regularity}(iii) and (v), $\bar J_n \toP J$ and $J$ is nonsingular.
+Therefore,
+\[
+\sqrt{n}\big(\hat\psi_{\mathrm{cs}}^{(K)}-\psi_0\big)
+=-\bar J_n^{-1}\sqrt{n}\,\Phi_n(\psi_0).
+\]
+By Assumption~\ref{ass:regularity}(vi), $\sqrt{n}\,\Phi_n(\psi_0)\tod N(0,S)$; Slutsky's theorem yields the stated limit.
+\end{proof}
+
+\begin{remark}
+    Similarly to Proposition \ref{prop:est_prob}, precise values of the misclassification probabilities don't need to be known for Theorem \ref{thm:multi-cs} to hold. Again, the sufficient condition for consistency is 
+    \[ \sup_{\psi \in \Psi}\|\Phi_n^*(\psi) - \Phi_n^\circ(\psi) \| = o_P(1) \]
+    and for asymptotic unbiasedness is
+    \[ \sup_{\psi \in \Psi}\|\Phi_n^*(\psi) - \Phi_n^\circ(\psi) \| = o_P(n^{-1/2}) \]
+    where $\Phi_n^\circ$ uses true values of the probabilities and $\Phi_n^*$ the estimated ones.
+\end{remark}
+
+\subsection{BCA and BCM under drifting multicategory misclassification}
+
+We now state the multicategory analogue of the ``drifting/rare'' regime in which BCA/BCM remove a
+$\sqrt{n}$-scale mean shift.
+
+\begin{assumption}[Drifting multicategory misclassification]\label{ass:multi-drift}
+The misclassification matrix may depend on $n$, written $\Pi^{(n)}$. Assume that
+for every pair $j\neq \ell$,
+\[
+\Pi^{(n)}_{j\ell}=O(n^{-1/2}),
+\qquad\text{or after strengthening}\qquad
+\sqrt{n}\,\Pi^{(n)}_{j\ell}\to \kappa_{j\ell}\in[0,\infty),
+\]
+and $\Pi^{(n)}_{\ell\ell}=1-\sum_{j\neq \ell}\Pi^{(n)}_{j\ell}$.
+\end{assumption}
+\begin{assumption}[Finite moment condition]\label{ass:multi-moment}
+    The value of a moment 
+    \[\E \big[(1+\|x_i\|^2)(\mu_{i,j}(\psi_0)-\mu_{i,l}(\psi_0))^2\big]\]
+    is finite for all $j\neq l$.
+\end{assumption}
+
+\begin{theorem}[Validity of multicategory BCA/BCM in the drifting regime]\label{thm:multi-bc}
+Assume \eqref{eq:glm-multi}, Assumptions~\ref{ass:multi-nondiff}--\ref{ass:multi-moment}, moments and smoothness conditions given by Assumptions \ref{ass:moments}-\ref{ass:smooth}, and conditions ensuring $\hat I(\psi_0)\toP I(\psi_0)$ with $I(\psi_0)$ nonsingular, a CLT with
+$n^{-1/2}\sum_{i=1}^n \hat\xi_i\varepsilon_i \tod N(0, C)$, where $\varepsilon_i:=Y_i-\mu_{i,Z_i}(\psi_0),$ and $C:=\E[\varepsilon_i^2\,\xi_i\xi_i^\top]$, 
+$\sqrt{n}\,\hat m(\hat\psi)\toP \sqrt{n}\,m(\psi_0)$, and consistency of $\hat\psi$.
+Then the additive and multiplicative corrections \eqref{eq:bca-multi}--\eqref{eq:bcm-multi} satisfy
+\[
+\sqrt{n}\big(\hat\psi_{\mathrm{bca}}^{(K)}-\psi_0\big)\tod N\big(0,\,I(\psi_0)^{-1}CI(\psi_0)^{-1}\big),
+\qquad
+\sqrt{n}\big(\hat\psi_{\mathrm{bcm}}^{(K)}-\psi_0\big)\tod N\big(0,\,I(\psi_0)^{-1}CI(\psi_0)^{-1}\big).
+\]
+In particular, both estimators are consistent and asymptotically unbiased in the drifting regime.
+\end{theorem}
+
+\begin{proof}
+\textbf{Step 1 (order of the score drift).}
+By Proposition~\ref{prop:multi-drift}, each component of $m(\psi_0)$ is a linear combination of terms of the form
+$\Pi_{j\ell}^{(n)}\E[\mu_{i,\ell}(\psi_0)-\mu_{i,j}(\psi_0)]$ or
+$\Pi_{j\ell}^{(n)}\E[(\mu_{i,\ell}(\psi_0)-\mu_{i,j}(\psi_0))x_i]$.
+Because the mean differences are $O(1)$ and $\Pi_{j\ell}^{(n)}=O(n^{-1/2})$ for $j\neq \ell$,
+we have $m(\psi_0)=O(n^{-1/2})$ and therefore $\sqrt{n}\,m(\psi_0)=O(1)$.
+
+\textbf{Step 2 (linearize the na\"ive estimating equation).}
+The na\"ive estimator satisfies $\hat U_n(\hat\psi)=0$.
+An integral remainder Taylor expansion around $\psi_0$ yields
+\[
+0=\hat U_n(\psi_0)+\bar J_n(\hat\psi-\psi_0).
+\]
+As in the proof of Theorem \ref{thm:mis-bc}
+\[ \|\bar J_n + \hat I (\psi_0) \| \leq \frac{L}{2} \left\|\hat\psi - \psi_0 \right\| \frac{1}{n}\sum_{i=1}^n\left\| \hat\xi_i\right\|^3 = o_P(1). \]
+By the assumed convergence $\hat I(\psi_0)\toP I(\psi_0)$, so
+$\bar J_n \toP -I(\psi_0)$ as well, thus also $\bar J_n^{-1}=-I(\psi_0)^{-1}+o_P(1)$.
+Multiplying by $\sqrt{n}$ gives
+\begin{equation}
+\sqrt{n}(\hat\psi-\psi_0)=I(\psi_0)^{-1}\sqrt{n}\,\hat U_n(\psi_0)+o_P(1).
+\label{eq:multi-linearize}
+\end{equation}
+
+\textbf{Step 3 (decompose $\sqrt{n}\,\hat U_n(\psi_0)$ into a zero-mean CLT term plus drift).}
+Write
+\[
+Y_i-\mu_{i,\hat Z_i}(\psi_0)
+=\underbrace{(Y_i-\mu_{i,Z_i}(\psi_0))}_{\varepsilon_i}
++\underbrace{(\mu_{i,Z_i}(\psi_0)-\mu_{i,\hat Z_i}(\psi_0))}_{\text{misclassification gap}}.
+\]
+Therefore,
+\[
+\sqrt{n}\,\hat U_n(\psi_0)
+=\frac{1}{\sqrt{n}}\sum_{i=1}^n \hat\xi_i\varepsilon_i
++\sqrt{n}\,m(\psi_0)
++o_P(1),
+\]
+where the last $o_P(1)$ term comes from replacing the expectation of the gap by its sample average. This follows by reasoning similar to that in the proof of Theorem \ref{thm:mis-bc} by letting $\Delta_i = \hat\xi_i \big( \mu_{i, Z_i} (\psi_0) - \mu_{i, \hat Z_i}(\psi_0)\big)$, noticing that $\E \| \Delta_i \|^2=o(1)$ and concluding from that (and independence of $\Delta_i$) convergence
+\[ \E \left\| \frac{1}{\sqrt{n}} \sum_{i=1}^n (\Delta_i - \E \Delta_i) \right\|^2 \to 0. \]
+By Proposition~\ref{prop:multi-drift}, the drift term equals $\sqrt{n}\,m(\psi_0)$.
+By the assumed CLT, $n^{-1/2}\sum_i\hat\xi_i\varepsilon_i\tod N(0,C)$.
+
+\textbf{Step 4 (asymptotic distribution of the na\"ive estimator).}
+Combine Step~3 with \eqref{eq:multi-linearize} to obtain
+\[
+\sqrt{n}(\hat\psi-\psi_0)
+=I(\psi_0)^{-1}\Big\{\frac{1}{\sqrt{n}}\sum_{i=1}^n \hat\xi_i\varepsilon_i\Big\}
+\;+\;I(\psi_0)^{-1}\sqrt{n}\,m(\psi_0)\;+\;o_P(1).
+\]
+Thus $\sqrt{n}(\hat\psi-\psi_0)$ has a mean shift equal to $I(\psi_0)^{-1}\sqrt{n}\,m(\psi_0)$.
+
+\textbf{Step 5 (BCA cancels the mean shift).}
+By definition,
+\[
+\sqrt{n}\big(\hat\psi_{\mathrm{bca}}^{(K)}-\psi_0\big)
+=\sqrt{n}(\hat\psi-\psi_0)-\hat I(\hat\psi)^{-1}\sqrt{n}\,\hat m(\hat\psi).
+\]
+Since $\hat I (\hat\psi)-I(\psi_0) = \hat I(\hat\psi) - \hat I(\psi_0) + \hat I(\psi_0) - I(\psi_0)$, with $\hat I(\psi_0)\toP I(\psi_0)$ from assumption and 
+\[ \|\hat I (\hat\psi) - \hat I(\psi_0)\|\leq \frac{1}{n}\sum_{i=1}^n \left| \dot\mu\big(\eta_{i,\hat Z_i}(\hat\psi)\big) - \dot\mu \big(\eta_{i,\hat Z_i}(\psi_0)\big)\right|\cdot \| \hat\xi_i\|^2 \leq L \|\hat\psi - \psi_0\|\frac{1}{n}\sum_{i=1}^n\| \xi_i\|^3 = o_P(1) \]
+thus $\hat I(\hat\psi)\toP I(\psi_0)$ and finally $\hat I(\hat\psi)^{-1}=I(\psi_0)^{-1}+o_P(1)$. Also
+$\sqrt{n}\,\hat m(\hat\psi)=\sqrt{n}\,m(\psi_0)+o_P(1)$. Hence the second term equals
+$I(\psi_0)^{-1}\sqrt{n}\,m(\psi_0)+o_P(1)$, which cancels the mean shift from Step~4.
+The remaining leading term is $I(\psi_0)^{-1}n^{-1/2}\sum_i\hat\xi_i\varepsilon_i$, giving the stated centered normal limit.
+
+\textbf{Step 6 (BCM shares the same first-order limit).} Similarly to the proof of  Theorem \ref{thm:mis-bc} we use the identity
+\[ \hat I(\hat\psi)^{-1} - (\hat I(\hat\psi)+\hat M(\hat\psi))^{-1} = \hat I (\hat\psi)^{-1}\hat M(\hat\psi) (\hat I(\hat\psi) + \hat M(\hat\psi))^{-1} \]
+to get
+\[ \hat\psi^{\mathrm{(K)}}_{\mathrm{bca}} - \hat\psi^{\mathrm{(K)}}_{\mathrm{bcm}} = \hat I (\hat\psi)^{-1}\hat M(\hat\psi) (\hat I(\hat\psi) + \hat M(\hat\psi))^{-1} \hat m (\hat\psi) \]
+and since $\hat M(\hat\psi), \ \hat m (\hat\psi)$ are $O_P(n^{-1/2})$ and $\hat I (\hat\psi)^{-1}, \ (\hat I(\hat\psi) + \hat M(\hat\psi))^{-1}$ are $O_P(1)$, we get
+\[ \hat\psi^{\mathrm{(K)}}_{\mathrm{bca}} - \hat\psi^{\mathrm{(K)}}_{\mathrm{bcm}} = o_P(n^{-1/2}). \]
+\end{proof}
+
+\begin{thebibliography}{99}
+\bibitem[Battaglia et~al.(2025)]{battaglia2025}
+Battaglia, L., Christensen, T., Hansen, S., and Sacher, S. (2025).
+\newblock Inference for regression with variables generated by AI or machine learning
+\end{thebibliography}
+
+\end{document}
+
