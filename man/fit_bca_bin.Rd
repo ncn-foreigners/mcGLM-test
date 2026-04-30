@@ -4,9 +4,27 @@
 \alias{fit_bca_bin}
 \title{Additive bias correction (BCA) for binary misclassification}
 \usage{
-fit_bca_bin(psi_naive, y, z_hat, x, family, p01, p10, pi_z)
+fit_bca_bin(
+  psi_naive,
+  y,
+  z_hat,
+  x,
+  family,
+  p01,
+  p10,
+  pi_z,
+  iterate = FALSE,
+  max_iter = 50,
+  tol = 1e-08
+)
 }
 \description{
 psi_bca = psi_hat - I_hat(psi_hat)^(-1) * m_hat(psi_hat)
+}
+\details{
+With \code{iterate = TRUE}, uses a fixed-point iteration
+psi^(k+1) = psi_hat - I_hat(psi_hat)^(-1) * m_hat(psi^(k)),
+keeping I_hat fixed at the naive estimate and only updating the drift
+m_hat. This removes higher-order bias from evaluating m at the wrong point.
 }
 \keyword{internal}

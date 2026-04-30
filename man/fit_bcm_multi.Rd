@@ -4,7 +4,19 @@
 \alias{fit_bcm_multi}
 \title{BCM for multicategory misclassification}
 \usage{
-fit_bcm_multi(psi_naive, y, z_hat, x, K, family, Pi, pi_z)
+fit_bcm_multi(
+  psi_naive,
+  y,
+  z_hat,
+  x,
+  K,
+  family,
+  Pi,
+  pi_z,
+  iterate = FALSE,
+  max_iter = 50,
+  tol = 1e-08
+)
 }
 \description{
 BCM for multicategory misclassification

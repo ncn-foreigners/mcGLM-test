@@ -14,7 +14,8 @@ mcglm(
   p10 = NULL,
   pi_z = NULL,
   Pi = NULL,
-  K = NULL
+  K = NULL,
+  iterate = FALSE
 )
 }
 \arguments{
@@ -49,7 +50,11 @@ correspond to true categories, rows to proxy categories:
 
 \item{K}{Number of categories for multicategory case. If \code{NULL}
 (default), automatically determined: if all \code{z_hat} are in
-\{0, 1\} and no \code{Pi} is supplied, binary; otherwise multicategory.}
+0, 1 and no \code{Pi} is supplied, binary; otherwise multicategory.}
+
+\item{iterate}{Logical. If \code{TRUE}, BCA/BCM corrections are iterated
+until convergence. Iterated BCM converges to the corrected-score (CS)
+estimator. Default is \code{FALSE} (one-step correction).}
 }
 \value{
 An object of class \code{"mcglm"}, a list with components:

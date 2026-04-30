@@ -4,9 +4,27 @@
 \alias{fit_bcm_bin}
 \title{Multiplicative bias correction (BCM) for binary misclassification}
 \usage{
-fit_bcm_bin(psi_naive, y, z_hat, x, family, p01, p10, pi_z)
+fit_bcm_bin(
+  psi_naive,
+  y,
+  z_hat,
+  x,
+  family,
+  p01,
+  p10,
+  pi_z,
+  iterate = FALSE,
+  max_iter = 50,
+  tol = 1e-08
+)
 }
 \description{
 psi_bcm = psi_hat - (I_hat + M_hat)^(-1) * m_hat
+}
+\details{
+With \code{iterate = TRUE}, iterates Newton steps on the corrected-score
+equation Phi_n(psi) = U_hat(psi) - m_hat(psi) = 0. The one-step BCM
+is exactly one Newton step starting from psi_hat; iterating to convergence
+yields the corrected-score (CS) estimator.
 }
 \keyword{internal}

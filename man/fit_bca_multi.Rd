@@ -4,7 +4,19 @@
 \alias{fit_bca_multi}
 \title{BCA for multicategory misclassification}
 \usage{
-fit_bca_multi(psi_naive, y, z_hat, x, K, family, Pi, pi_z)
+fit_bca_multi(
+  psi_naive,
+  y,
+  z_hat,
+  x,
+  K,
+  family,
+  Pi,
+  pi_z,
+  iterate = FALSE,
+  max_iter = 50,
+  tol = 1e-08
+)
 }
 \description{
 BCA for multicategory misclassification

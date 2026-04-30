@@ -27,7 +27,10 @@
 #'   \code{Pi[j, l] = P(Z_hat = j-1 | Z = l-1)}.
 #' @param K Number of categories for multicategory case. If \code{NULL}
 #'   (default), automatically determined: if all \code{z_hat} are in
-#'   \{0, 1\} and no \code{Pi} is supplied, binary; otherwise multicategory.
+#'   0, 1 and no \code{Pi} is supplied, binary; otherwise multicategory.
+#' @param iterate Logical. If \code{TRUE}, BCA/BCM corrections are iterated
+#'   until convergence. Iterated BCM converges to the corrected-score (CS)
+#'   estimator. Default is \code{FALSE} (one-step correction).
 #'
 #' @return An object of class \code{"mcglm"}, a list with components:
 #'   \describe{
@@ -61,7 +64,8 @@
 mcglm <- function(y, z_hat, x, family = "poisson",
                   method = c("naive", "bca", "bcm", "cs"),
                   p01 = NULL, p10 = NULL, pi_z = NULL,
-                  Pi = NULL, K = NULL) {
+                  Pi = NULL, K = NULL,
+                  iterate = FALSE) {
 
   # --- input validation ---
   y     <- as.numeric(y)
@@ -110,9 +114,11 @@ mcglm <- function(y, z_hat, x, family = "poisson",
     p_total <- length(psi)
 
     if ("bca" %in% method)
-      results$bca <- fit_bca_bin(psi, y, z_hat, x, family, p01, p10, pi_z)
+      results$bca <- fit_bca_bin(psi, y, z_hat, x, family, p01, p10, pi_z,
+                                 iterate = iterate)
     if ("bcm" %in% method)
-      results$bcm <- fit_bcm_bin(psi, y, z_hat, x, family, p01, p10, pi_z)
+      results$bcm <- fit_bcm_bin(psi, y, z_hat, x, family, p01, p10, pi_z,
+                                 iterate = iterate)
     if ("cs"  %in% method)
       results$cs  <- fit_cs_bin(psi, y, z_hat, x, family, p01, p10, pi_z)
 
@@ -124,9 +130,11 @@ mcglm <- function(y, z_hat, x, family = "poisson",
     p_total <- length(psi)
 
     if ("bca" %in% method)
-      results$bca <- fit_bca_multi(psi, y, z_hat, x, K, family, Pi, pi_z)
+      results$bca <- fit_bca_multi(psi, y, z_hat, x, K, family, Pi, pi_z,
+                                   iterate = iterate)
     if ("bcm" %in% method)
-      results$bcm <- fit_bcm_multi(psi, y, z_hat, x, K, family, Pi, pi_z)
+      results$bcm <- fit_bcm_multi(psi, y, z_hat, x, K, family, Pi, pi_z,
+                                   iterate = iterate)
     if ("cs"  %in% method)
       results$cs  <- fit_cs_multi(psi, y, z_hat, x, K, family, Pi, pi_z)
   }

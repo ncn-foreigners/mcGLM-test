@@ -2,9 +2,12 @@ Package: mcGLM
 Title: Bias Corrections for GLMs with Misclassified Covariates
 Version: 0.1.0
 Authors@R: c(
+    person("Michał", "Warmuz", role = "aut",
+           email = "mwarmuz@student.agh.edu.pl"),
     person("Maciej", "Beresewicz", role = c("aut", "cre"),
            email = "maciej.beresewicz@ue.poznan.pl",
-           comment = c(ORCID = "0000-0002-8281-4301")))
+           comment = c(ORCID = "0000-0002-8281-4301"))
+           )
 Description: Implements additive (BCA), multiplicative (BCM), and corrected-score
     (CS) bias corrections for generalized linear models when a covariate is
     observed with misclassification error. Supports binary and multicategory
