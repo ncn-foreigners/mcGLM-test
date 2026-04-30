@@ -1,3 +1,16 @@
+# mcGLM 0.4.0
+
+## New features
+
+* Added `mcsimex()`: **MC-SIMEX** (Monte Carlo Simulation Extrapolation)
+  estimator for GLMs with misclassified covariates, following Küchenhoff,
+  Mwalili & Lesaffre (2006). The simulation step (matrix exponentiation via
+  eigendecomposition, multinomial resampling, and IRLS GLM fitting) is
+  implemented entirely in C++ using RcppEigen for high performance.
+  Supports Poisson, Binomial, and Gaussian families with binary or
+  multicategory misclassification. Extrapolation methods: linear,
+  quadratic, loglinear. Jackknife variance estimation included.
+
 # mcGLM 0.3.0
 
 ## New features

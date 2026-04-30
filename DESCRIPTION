@@ -1,6 +1,6 @@
 Package: mcGLM
 Title: Bias Corrections for GLMs with Misclassified Covariates
-Version: 0.3.0
+Version: 0.4.0
 Authors@R: c(
     person("Michał", "Warmuz", role = "aut",
            email = "mwarmuz@student.agh.edu.pl"),
@@ -18,11 +18,13 @@ Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 Imports:
     nleqslv,
+    Rcpp,
     stats,
     TMB
 LinkingTo:
-    TMB,
-    RcppEigen
+    Rcpp,
+    RcppEigen,
+    TMB
 Suggests:
     testthat (>= 3.0.0),
     numDeriv,
