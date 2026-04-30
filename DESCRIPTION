@@ -1,6 +1,6 @@
 Package: mcGLM
 Title: Bias Corrections for GLMs with Misclassified Covariates
-Version: 0.2.0
+Version: 0.3.0
 Authors@R: c(
     person("Michał", "Warmuz", role = "aut",
            email = "mwarmuz@student.agh.edu.pl"),
@@ -26,5 +26,6 @@ LinkingTo:
 Suggests:
     testthat (>= 3.0.0),
     numDeriv,
-    MASS
+    MASS,
+    nnet
 Config/testthat/edition: 3

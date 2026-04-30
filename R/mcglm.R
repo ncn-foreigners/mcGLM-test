@@ -12,7 +12,9 @@
 #' @param x Numeric matrix of correctly observed covariates (n x r).
 #'   An intercept column should be included if desired.
 #' @param family A \code{\link[stats]{family}} object or one of
-#'   \code{"poisson"}, \code{"binomial"}, \code{"gaussian"}.
+#'   \code{"poisson"}, \code{"binomial"}, \code{"gaussian"},
+#'   \code{"multinomial"}. For \code{"multinomial"}, only
+#'   \code{method = "onestep"} (and \code{"naive"}) are supported.
 #' @param method Character vector of methods to compute. Any subset of
 #'   \code{c("naive", "bca", "bcm", "cs", "onestep")}. Default is all four
 #'   correction-based methods; specify \code{"onestep"} to include the
@@ -39,6 +41,9 @@
 #' @param freq_weights Optional numeric vector of frequency weights (length n).
 #'   Each observation contributes as if it were \code{freq_weights[i]} identical
 #'   copies. Must be positive. Default is \code{NULL} (unit weights).
+#' @param J Number of response categories for the multinomial model. If
+#'   \code{NULL} (default), automatically determined from \code{y} when
+#'   \code{family = "multinomial"}.
 #' @param homoskedastic Logical. For Gaussian one-step estimation, whether to
 #'   assume a common error variance. Default is \code{TRUE}.
 #' @param optim_control List of control parameters passed to \code{nlminb}
@@ -81,6 +86,7 @@ mcglm <- function(y, z_hat, x, family = "poisson",
                   iterate = FALSE,
                   weights = "fixed",
                   freq_weights = NULL,
+                  J = NULL,
                   homoskedastic = TRUE,
                   optim_control = list()) {
 
@@ -102,6 +108,19 @@ mcglm <- function(y, z_hat, x, family = "poisson",
       stop("freq_weights must have length n (", n, "), got ", length(wt))
     if (any(wt <= 0))
       stop("freq_weights must be positive")
+  }
+
+  # --- multinomial family ---
+  is_multinomial <- is.character(family) && family == "multinomial"
+  if (is_multinomial) {
+    unsupported <- setdiff(method, c("naive", "onestep"))
+    if (length(unsupported) > 0)
+      stop("For multinomial family, only 'naive' and 'onestep' methods are ",
+           "supported. Unsupported: ", paste(unsupported, collapse = ", "))
+    y <- as.integer(y)
+    if (is.null(J)) J <- length(unique(y))
+    if (any(y < 0L) || any(y >= J))
+      stop("For multinomial, y must be integers in {0, ..., J-1}")
   }
 
   # Determine binary vs multicategory
@@ -132,13 +151,34 @@ mcglm <- function(y, z_hat, x, family = "poisson",
 
   # --- fit ---
   results <- list()
+  onestep_vcov   <- NULL
+  onestep_loglik <- NULL
+  naive_glm_fit  <- NULL
 
-  if (is_binary) {
-    # ---- binary path ----
+  if (is_multinomial) {
+    # ---- multinomial path ----
+    naive_mn <- fit_naive_multinomial(y, z_hat, x, J, K, wt = wt)
+    psi      <- naive_mn$coefficients
+    results$naive <- psi
+    p_total  <- length(psi)
+
+    if ("onestep" %in% method) {
+      os <- fit_onestep_multinomial(y, z_hat, x, J, K,
+                                    p01 = p01, p10 = p10, pi_z = pi_z,
+                                    Pi = Pi, weights = weights,
+                                    optim_control = optim_control, wt = wt)
+      results$onestep <- os$coefficients
+      onestep_vcov    <- os$vcov
+      onestep_loglik  <- os$loglik
+    }
+
+  } else if (is_binary) {
+    # ---- binary GLM path ----
     naive <- fit_naive_bin(y, z_hat, x, family, wt = wt)
     psi   <- naive$coefficients
     results$naive <- psi
     p_total <- length(psi)
+    naive_glm_fit <- naive$glm_fit
 
     if ("bca" %in% method)
       results$bca <- fit_bca_bin(psi, y, z_hat, x, family, p01, p10, pi_z,
@@ -160,11 +200,12 @@ mcglm <- function(y, z_hat, x, family = "poisson",
     }
 
   } else {
-    # ---- multicategory path ----
+    # ---- multicategory GLM path ----
     naive <- fit_naive_multi(y, z_hat, x, K, family, wt = wt)
     psi   <- naive$coefficients
     results$naive <- psi
     p_total <- length(psi)
+    naive_glm_fit <- naive$glm_fit
 
     if ("bca" %in% method)
       results$bca <- fit_bca_multi(psi, y, z_hat, x, K, family, Pi, pi_z,
@@ -187,13 +228,28 @@ mcglm <- function(y, z_hat, x, family = "poisson",
   }
 
   # --- parameter names ---
-  if (is_binary) {
+  if (is_multinomial) {
+    # names already set by fit_onestep_multinomial / fit_naive_multinomial
+    s <- K - 1
+    r <- ncol(x)
+    block_size <- s + r
+    nms <- character(p_total)
+    for (jj in seq_len(J - 1)) {
+      offset <- (jj - 1) * block_size
+      if (s == 1) {
+        nms[offset + 1] <- paste0("y", jj, ":gamma")
+      } else if (s > 1) {
+        nms[offset + seq_len(s)] <- paste0("y", jj, ":gamma", seq_len(s))
+      }
+      nms[offset + s + seq_len(r)] <- paste0("y", jj, ":alpha", seq_len(r) - 1)
+    }
+  } else if (is_binary) {
     nms <- c("gamma", paste0("alpha", seq_len(ncol(x)) - 1))
   } else {
     nms <- c(paste0("gamma", seq_len(K - 1)),
              paste0("alpha", seq_len(ncol(x)) - 1))
   }
-  # Name non-onestep results (onestep already has names from fit_onestep_*)
+  # Name results that don't yet have names
   results <- lapply(results, function(v) {
     if (is.null(names(v))) names(v) <- nms
     v
@@ -201,7 +257,7 @@ mcglm <- function(y, z_hat, x, family = "poisson",
 
   out <- list(
     coefficients = results,
-    naive_fit    = naive$glm_fit,
+    naive_fit    = naive_glm_fit,
     method       = method,
     family       = family,
     K            = K,
@@ -209,8 +265,9 @@ mcglm <- function(y, z_hat, x, family = "poisson",
     p            = p_total,
     freq_weights = wt
   )
+  if (is_multinomial) out$J <- J
 
-  if ("onestep" %in% method) {
+  if (!is.null(onestep_vcov)) {
     out$vcov_onestep   <- onestep_vcov
     out$loglik_onestep <- onestep_loglik
   }

@@ -1,3 +1,20 @@
+# mcGLM 0.3.0
+
+## New features
+
+* Added one-step joint estimation for **multinomial logistic** response models
+  (`family = "multinomial"`). The model supports categorical responses
+  `Y ∈ {0,...,J-1}` with misclassified covariates (binary or multicategory Z).
+  The TMB mixture likelihood marginalizes over the latent true Z, estimating
+  response-category-specific coefficients `(gamma_{j,k}, alpha_j)` for each
+  non-baseline response category.
+
+* Naive multinomial estimation via `nnet::multinom` (if available) or
+  category-specific binomial GLMs as fallback.
+
+* BCA/BCM/CS methods are not yet available for multinomial — requesting them
+  produces an informative error.
+
 # mcGLM 0.2.0
 
 ## New features
